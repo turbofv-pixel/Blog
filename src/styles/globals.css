@@ -1,0 +1,204 @@
+@charset "UTF-8";
+
+:root {
+  --naver-green: #03C75A;
+  --naver-green-hover: #02b350;
+  --bg-dark: #0f172a;
+  --bg-card: rgba(30, 41, 59, 0.7);
+  --border-color: rgba(255, 255, 255, 0.1);
+  --text-main: #f8fafc;
+  --text-muted: #94a3b8;
+  --accent-purple: #8b5cf6;
+  --accent-blue: #3b82f6;
+  --accent-pink: #ec4899;
+  --font-family: 'Pretendard', -apple-system, BlinkMacSystemFont, system-ui, Roboto, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  font-family: var(--font-family);
+  background: #090d16;
+  background-image: 
+    radial-gradient(at 0% 0%, rgba(3, 199, 90, 0.12) 0px, transparent 50%),
+    radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%),
+    radial-gradient(at 50% 100%, rgba(59, 130, 246, 0.12) 0px, transparent 50%);
+  background-attachment: fixed;
+  color: var(--text-main);
+  min-height: 100vh;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.6);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.3);
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(3, 199, 90, 0.6);
+}
+
+/* Glassmorphism Containers */
+.glass-panel {
+  background: var(--bg-card);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border: 1px solid var(--border-color);
+  border-radius: 16px;
+  box-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.37);
+  transition: all 0.3s ease;
+}
+
+.glass-panel:hover {
+  border-color: rgba(255, 255, 255, 0.2);
+}
+
+/* Buttons */
+.btn-naver {
+  background: linear-gradient(135deg, #03C75A 0%, #029443 100%);
+  color: #ffffff;
+  font-weight: 600;
+  padding: 10px 20px;
+  border-radius: 10px;
+  border: none;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  box-shadow: 0 4px 14px rgba(3, 199, 90, 0.35);
+}
+
+.btn-naver:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 6px 20px rgba(3, 199, 90, 0.5);
+  background: linear-gradient(135deg, #04db64 0%, #03C75A 100%);
+}
+
+.btn-naver:active {
+  transform: translateY(0);
+}
+
+.btn-secondary {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text-main);
+  border: 1px solid var(--border-color);
+  font-weight: 500;
+  padding: 10px 18px;
+  border-radius: 10px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  transition: all 0.2s ease;
+}
+
+.btn-secondary:hover {
+  background: rgba(255, 255, 255, 0.15);
+  border-color: rgba(255, 255, 255, 0.3);
+}
+
+/* Badge & Pills */
+.badge {
+  display: inline-block;
+  padding: 4px 12px;
+  border-radius: 20px;
+  font-size: 0.8rem;
+  font-weight: 600;
+}
+
+.badge-parenting {
+  background: rgba(236, 72, 153, 0.2);
+  color: #f472b6;
+  border: 1px solid rgba(236, 72, 153, 0.3);
+}
+
+.badge-it {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+  border: 1px solid rgba(59, 130, 246, 0.3);
+}
+
+.badge-travel {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+  border: 1px solid rgba(16, 185, 129, 0.3);
+}
+
+/* Animations */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+}
+
+/* Naver SmartEditor Live Preview Formatting */
+.naver-smart-editor-preview {
+  background: #ffffff;
+  color: #333333;
+  padding: 30px;
+  border-radius: 12px;
+  font-family: 'Maru Buri', 'Nanum Gothic', sans-serif;
+  line-height: 1.8;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.15);
+}
+
+.naver-smart-editor-preview h1 {
+  font-size: 26px;
+  font-weight: 700;
+  color: #111;
+  border-bottom: 2px solid #03C75A;
+  padding-bottom: 10px;
+  margin-top: 24px;
+  margin-bottom: 16px;
+}
+
+.naver-smart-editor-preview h2 {
+  font-size: 20px;
+  font-weight: 700;
+  color: #222;
+  margin-top: 20px;
+  margin-bottom: 12px;
+}
+
+.naver-smart-editor-preview blockquote {
+  border-left: 4px solid #03C75A;
+  background: #f8faf8;
+  padding: 12px 20px;
+  margin: 16px 0;
+  color: #444;
+  font-style: italic;
+}
+
+.naver-smart-editor-preview table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 16px 0;
+}
+
+.naver-smart-editor-preview th,
+.naver-smart-editor-preview td {
+  border: 1px solid #e2e8f0;
+  padding: 10px;
+  text-align: left;
+}
+
+.naver-smart-editor-preview th {
+  background: #f1f5f9;
+  font-weight: bold;
+}
