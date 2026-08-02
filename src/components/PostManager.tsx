@@ -1,6 +1,6 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Category, Post } from '../types';
-import { FileText, Copy, Check, Plus, Tag, Calendar, Folder, ExternalLink, Sparkles, Code, Edit3, Trash2 } from 'lucide-react';
+import { FileText, Copy, Check, Plus, Tag, Calendar, Folder, ExternalLink, Sparkles, Code, Edit3, Trash2, Download, Film } from 'lucide-react';
 import { marked } from 'marked';
 
 interface PostManagerProps {
@@ -12,8 +12,21 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   const [selectedCategory, setSelectedCategory] = useState<Category>('전체');
   const [selectedPost, setSelectedPost] = useState<Post>(initialPosts[0]);
   const [copiedStatus, setCopiedStatus] = useState<boolean>(false);
+  const [isPreparingCopy, setIsPreparingCopy] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedContent, setEditedContent] = useState<string>(initialPosts[0]?.content || '');
+
+  // Video files referenced in the current post (for manual download, since browsers
+  // can't write video bytes to the clipboard and Naver's editor only accepts video
+  // through its own upload button, not a pasted <video> tag)
+  const videoSources = useMemo(() => {
+    const matches = [...editedContent.matchAll(/<video[^>]*src=["']([^"']+)["'][^>]*>/gi)];
+    return Array.from(new Set(matches.map((m) => m[1])));
+  }, [editedContent]);
+
+  // Naver's servers fetch pasted image URLs themselves — that only works once this site
+  // is deployed publicly, since they can't reach a localhost dev server
+  const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
 
   // Filter posts by selected category
   const filteredPosts = posts.filter(
@@ -28,7 +41,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     setCopiedStatus(false);
   };
 
-  // Convert Markdown to Naver SmartEditor ONE formatted HTML
+  // Convert Markdown to Naver SmartEditor ONE formatted HTML (used for on-screen preview)
   const getNaverFormattedHtml = (markdownText: string) => {
     try {
       const rawHtml = marked.parse(markdownText) as string;
@@ -43,11 +56,57 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     }
   };
 
+  // Resolve a relative image src into an absolute URL. We deliberately avoid inlining
+  // images as base64: Naver's paste target caps the pasted body at 5MB, and a handful of
+  // base64-encoded photos blows past that almost immediately. An absolute URL keeps the
+  // pasted payload tiny — Naver's editor fetches the image itself from that URL — but it
+  // only works once this site is actually deployed and publicly reachable at that URL.
+  const toAbsoluteUrl = (src: string): string => {
+    try {
+      // Resolve root-relative paths (e.g. "/images/x.jpg") against the deployed base path
+      // (e.g. "/Blog/"), not just the domain root, so this keeps working on project sites
+      const siteBase = new URL(import.meta.env.BASE_URL, window.location.origin);
+      const relativeSrc = src.replace(/^\//, '');
+      return new URL(relativeSrc, siteBase).href;
+    } catch (e) {
+      return src;
+    }
+  };
+
+  // Build the HTML that actually goes on the clipboard: image srcs are made absolute,
+  // and <video> tags are swapped for a manual-upload notice since Naver's editor only
+  // accepts video through its own upload button, not a pasted <video src>
+  const buildNaverClipboardHtml = async (markdownText: string): Promise<string> => {
+    const rawHtml = marked.parse(markdownText) as string;
+    const container = document.createElement('div');
+    container.innerHTML = rawHtml;
+
+    container.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src');
+      if (src) img.setAttribute('src', toAbsoluteUrl(src));
+    });
+
+    container.querySelectorAll('video').forEach((video) => {
+      const src = video.getAttribute('src') || '';
+      const fileName = src.split('/').pop() || '동영상';
+      const notice = document.createElement('p');
+      notice.style.cssText = 'padding:12px 16px;background:#f2f5f3;border-left:4px solid #03C75A;color:#333;';
+      notice.textContent = `[동영상: ${fileName}] 화면의 "동영상 다운로드" 목록에서 파일을 저장한 뒤, 네이버 에디터의 동영상 삽입 버튼으로 직접 업로드해 주세요.`;
+      video.replaceWith(notice);
+    });
+
+    return `
+      <div style="font-family: 'Maru Buri', 'Nanum Gothic', sans-serif; color: #222222; font-size: 16px; line-height: 1.8;">
+        ${container.innerHTML}
+      </div>
+    `;
+  };
+
   // One-click Copy for Naver SmartEditor
   const handleCopyToNaver = async () => {
-    const htmlContent = getNaverFormattedHtml(editedContent);
-    
+    setIsPreparingCopy(true);
     try {
+      const htmlContent = await buildNaverClipboardHtml(editedContent);
       // Create rich HTML Blob for clipboard so Naver SmartEditor receives styled rich text
       const blobHtml = new Blob([htmlContent], { type: 'text/html' });
       const blobText = new Blob([editedContent], { type: 'text/plain' });
@@ -68,6 +127,8 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
       } catch (fallbackErr) {
         alert('복사에 실패했습니다. 아래 텍스트를 직접 복사해 주세요.');
       }
+    } finally {
+      setIsPreparingCopy(false);
     }
   };
 
@@ -233,9 +294,11 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             <button
               onClick={handleCopyToNaver}
               className="btn-naver"
+              disabled={isPreparingCopy}
+              style={{ opacity: isPreparingCopy ? 0.7 : 1, cursor: isPreparingCopy ? 'wait' : 'pointer' }}
             >
               {copiedStatus ? <Check size={18} /> : <Copy size={18} />}
-              {copiedStatus ? '복사 완료! (네이버에 붙여넣으세요)' : '네이버 스마트에디터용 복사 (Ctrl+V)'}
+              {isPreparingCopy ? '이미지 변환 중...' : copiedStatus ? '복사 완료! (네이버에 붙여넣으세요)' : '네이버 스마트에디터용 복사 (Ctrl+V)'}
             </button>
           </div>
         </div>
@@ -255,7 +318,43 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             fontSize: '0.9rem'
           }}>
             <Sparkles size={18} />
-            네이버 스마트에디터 서식이 클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요.
+            {isLocalHost
+              ? '클립보드에 복사되었습니다! (단, 지금은 localhost라 사진 URL을 네이버가 못 읽어와요 — 배포 후 이 화면에서 다시 복사해야 사진이 붙여넣기 됩니다)'
+              : '클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (사진은 URL로 연결되어 자동으로 채워집니다)'}
+          </div>
+        )}
+
+        {/* Video Download Notice: browsers can't put video bytes on the clipboard, and
+            Naver's editor only accepts video via its own upload button, so videos are
+            handled as a manual download-then-upload step instead of copy/paste */}
+        {videoSources.length > 0 && (
+          <div style={{
+            background: 'rgba(255, 255, 255, 0.04)',
+            border: '1px solid var(--border-color)',
+            borderRadius: '10px',
+            padding: '14px 18px',
+            display: 'flex',
+            flexDirection: 'column',
+            gap: '10px'
+          }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-muted)' }}>
+              <Film size={16} color="#03C75A" />
+              동영상은 복사/붙여넣기가 지원되지 않아요 — 아래에서 다운로드 후 네이버 에디터의 동영상 삽입 버튼으로 직접 업로드해 주세요.
+            </div>
+            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+              {videoSources.map((src) => (
+                <a
+                  key={src}
+                  href={src}
+                  download
+                  className="btn-secondary"
+                  style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                >
+                  <Download size={14} />
+                  {src.split('/').pop()}
+                </a>
+              ))}
+            </div>
           </div>
         )}
 
