@@ -12,16 +12,20 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   const [selectedCategory, setSelectedCategory] = useState<Category>('전체');
   const [selectedPost, setSelectedPost] = useState<Post>(initialPosts[0]);
   const [copiedStatus, setCopiedStatus] = useState<boolean>(false);
-  const [isPreparingCopy, setIsPreparingCopy] = useState<boolean>(false);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedContent, setEditedContent] = useState<string>(initialPosts[0]?.content || '');
 
-  // Video files referenced in the current post (for manual download, since browsers
-  // can't write video bytes to the clipboard and Naver's editor only accepts video
-  // through its own upload button, not a pasted <video> tag)
-  const videoSources = useMemo(() => {
-    const matches = [...editedContent.matchAll(/<video[^>]*src=["']([^"']+)["'][^>]*>/gi)];
-    return Array.from(new Set(matches.map((m) => m[1])));
+  // Photo and video files referenced in the current post, for manual download. Naver's
+  // editor doesn't reliably accept pasted <img>/<video> tags (external URLs get dropped,
+  // data URIs get stripped) but uploading the same file through its own "사진/동영상 추가"
+  // button works fine — so that's the flow we point users at instead of fighting the paste
+  const mediaSources = useMemo(() => {
+    const rawHtml = marked.parse(editedContent) as string;
+    const container = document.createElement('div');
+    container.innerHTML = rawHtml;
+    const images = Array.from(container.querySelectorAll('img')).map((img) => img.getAttribute('src') || '');
+    const videos = Array.from(container.querySelectorAll('video')).map((video) => video.getAttribute('src') || '');
+    return Array.from(new Set([...images, ...videos])).filter(Boolean);
   }, [editedContent]);
 
   // Filter posts by selected category
@@ -52,73 +56,25 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     }
   };
 
-  // Resolve a relative image src (e.g. "/images/x.jpg") into an absolute URL, against the
-  // deployed base path (e.g. "/Blog/") rather than just the domain root, so it also works
-  // on GitHub Pages project sites
-  const toAbsoluteUrl = (src: string): string => {
-    try {
-      const siteBase = new URL(import.meta.env.BASE_URL, window.location.origin);
-      const relativeSrc = src.replace(/^\//, '');
-      return new URL(relativeSrc, siteBase).href;
-    } catch (e) {
-      return src;
-    }
-  };
-
-  // Naver's paste handler doesn't reliably keep externally-hosted <img src="..."> — it
-  // shows the image briefly right after paste, then drops it once it fails to re-host the
-  // hotlinked file on its own CDN. So we embed the actual image bytes as a base64 data URI
-  // instead. That alone tends to blow past Naver's 5MB paste cap once a post has more than
-  // a couple of photos, so we downscale/re-compress each one first to keep the total small.
-  const compressImageToDataUri = async (src: string, maxDimension: number, quality: number): Promise<string> => {
-    try {
-      const res = await fetch(toAbsoluteUrl(src));
-      const blob = await res.blob();
-      const bitmap = await createImageBitmap(blob);
-
-      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
-      const width = Math.round(bitmap.width * scale);
-      const height = Math.round(bitmap.height * scale);
-
-      const canvas = document.createElement('canvas');
-      canvas.width = width;
-      canvas.height = height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return toAbsoluteUrl(src);
-      ctx.drawImage(bitmap, 0, 0, width, height);
-
-      return canvas.toDataURL('image/jpeg', quality);
-    } catch (e) {
-      // If fetching/compressing fails (e.g. offline), fall back to a plain URL reference
-      return toAbsoluteUrl(src);
-    }
-  };
-
-  // Build the HTML that actually goes on the clipboard: images are compressed and embedded
-  // as data URIs, and <video> tags are swapped for a manual-upload notice since Naver's
-  // editor only accepts video through its own upload button, not a pasted <video src>
-  const buildNaverClipboardHtml = async (
-    markdownText: string,
-    imageOptions: { maxDimension: number; quality: number }
-  ): Promise<string> => {
+  // Build the HTML that actually goes on the clipboard: text/formatting pastes cleanly into
+  // Naver's editor, but <img>/<video> tags don't (external URLs get dropped after paste,
+  // data URIs get stripped outright) — so both are swapped for a short manual-upload notice
+  // pointing at the download list below, instead of the actual media element
+  const buildNaverClipboardHtml = (markdownText: string): string => {
     const rawHtml = marked.parse(markdownText) as string;
     const container = document.createElement('div');
     container.innerHTML = rawHtml;
 
-    const images = Array.from(container.querySelectorAll('img'));
-    await Promise.all(images.map(async (img) => {
-      const src = img.getAttribute('src');
-      if (src) img.setAttribute('src', await compressImageToDataUri(src, imageOptions.maxDimension, imageOptions.quality));
-    }));
-
-    container.querySelectorAll('video').forEach((video) => {
-      const src = video.getAttribute('src') || '';
-      const fileName = src.split('/').pop() || '동영상';
+    const replaceWithNotice = (el: Element, kind: string, src: string) => {
+      const fileName = src.split('/').pop() || kind;
       const notice = document.createElement('p');
       notice.style.cssText = 'padding:12px 16px;background:#f2f5f3;border-left:4px solid #03C75A;color:#333;';
-      notice.textContent = `[동영상: ${fileName}] 화면의 "동영상 다운로드" 목록에서 파일을 저장한 뒤, 네이버 에디터의 동영상 삽입 버튼으로 직접 업로드해 주세요.`;
-      video.replaceWith(notice);
-    });
+      notice.textContent = `[${kind}: ${fileName}] 아래 "사진·동영상 다운로드" 목록에서 파일을 저장한 뒤, 네이버 에디터의 사진/동영상 추가 버튼으로 직접 올려주세요.`;
+      el.replaceWith(notice);
+    };
+
+    container.querySelectorAll('img').forEach((img) => replaceWithNotice(img, '사진', img.getAttribute('src') || ''));
+    container.querySelectorAll('video').forEach((video) => replaceWithNotice(video, '동영상', video.getAttribute('src') || ''));
 
     return `
       <div style="font-family: 'Maru Buri', 'Nanum Gothic', sans-serif; color: #222222; font-size: 16px; line-height: 1.8;">
@@ -127,19 +83,10 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     `;
   };
 
-  // Stay safely under Naver's ~5MB paste cap
-  const MAX_CLIPBOARD_BYTES = 4.5 * 1024 * 1024;
-
   // One-click Copy for Naver SmartEditor
   const handleCopyToNaver = async () => {
-    setIsPreparingCopy(true);
+    const htmlContent = buildNaverClipboardHtml(editedContent);
     try {
-      let htmlContent = await buildNaverClipboardHtml(editedContent, { maxDimension: 1280, quality: 0.72 });
-      // If a post has a lot of photos, the first pass can still land close to the cap —
-      // compress harder once and try again rather than let the paste fail in Naver
-      if (new Blob([htmlContent]).size > MAX_CLIPBOARD_BYTES) {
-        htmlContent = await buildNaverClipboardHtml(editedContent, { maxDimension: 900, quality: 0.5 });
-      }
       // Create rich HTML Blob for clipboard so Naver SmartEditor receives styled rich text
       const blobHtml = new Blob([htmlContent], { type: 'text/html' });
       const blobText = new Blob([editedContent], { type: 'text/plain' });
@@ -160,8 +107,6 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
       } catch (fallbackErr) {
         alert('복사에 실패했습니다. 아래 텍스트를 직접 복사해 주세요.');
       }
-    } finally {
-      setIsPreparingCopy(false);
     }
   };
 
@@ -327,11 +272,9 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             <button
               onClick={handleCopyToNaver}
               className="btn-naver"
-              disabled={isPreparingCopy}
-              style={{ opacity: isPreparingCopy ? 0.7 : 1, cursor: isPreparingCopy ? 'wait' : 'pointer' }}
             >
               {copiedStatus ? <Check size={18} /> : <Copy size={18} />}
-              {isPreparingCopy ? '이미지 변환 중...' : copiedStatus ? '복사 완료! (네이버에 붙여넣으세요)' : '네이버 스마트에디터용 복사 (Ctrl+V)'}
+              {copiedStatus ? '복사 완료! (네이버에 붙여넣으세요)' : '네이버 스마트에디터용 복사 (Ctrl+V)'}
             </button>
           </div>
         </div>
@@ -351,14 +294,15 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             fontSize: '0.9rem'
           }}>
             <Sparkles size={18} />
-            클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (사진은 압축되어 함께 포함됩니다)
+            서식 있는 글이 클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (사진·동영상은 아래에서 다운로드해 직접 올려주세요)
           </div>
         )}
 
-        {/* Video Download Notice: browsers can't put video bytes on the clipboard, and
-            Naver's editor only accepts video via its own upload button, so videos are
-            handled as a manual download-then-upload step instead of copy/paste */}
-        {videoSources.length > 0 && (
+        {/* Photo/Video Download Notice: Naver's editor doesn't reliably accept pasted
+            <img>/<video> tags (external URLs get dropped after paste, data URIs get
+            stripped outright), but uploading the same file through its own upload button
+            works fine — so that's the flow offered here instead of fighting the paste */}
+        {mediaSources.length > 0 && (
           <div style={{
             background: 'rgba(255, 255, 255, 0.04)',
             border: '1px solid var(--border-color)',
@@ -370,10 +314,10 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-muted)' }}>
               <Film size={16} color="#03C75A" />
-              동영상은 복사/붙여넣기가 지원되지 않아요 — 아래에서 다운로드 후 네이버 에디터의 동영상 삽입 버튼으로 직접 업로드해 주세요.
+              사진·동영상은 복사/붙여넣기로 들어가지 않아요 — 아래에서 다운로드 후 네이버 에디터의 사진/동영상 추가 버튼으로 직접 올려주세요.
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {videoSources.map((src) => (
+              {mediaSources.map((src) => (
                 <a
                   key={src}
                   href={src}
