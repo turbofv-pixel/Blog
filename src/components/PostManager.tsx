@@ -16,6 +16,20 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedContent, setEditedContent] = useState<string>(initialPosts[0]?.content || '');
 
+  // Local src -> already-uploaded Naver image URL (e.g. https://postfiles.pstatic.net/...).
+  // Once a photo has one of these, the "글+사진 한 번에 복사" button can embed a real <img
+  // src> pointing at Naver's own domain instead of a manual-upload notice — that's what
+  // actually survives Naver's paste sanitizer (see buildNaverClipboardHtml below). Persisted
+  // so it doesn't need to be re-entered every time.
+  const [naverUrlMap, setNaverUrlMap] = useState<Record<string, string>>(() => {
+    try {
+      return JSON.parse(localStorage.getItem('naverImageUrlMap') || '{}');
+    } catch (e) {
+      return {};
+    }
+  });
+  const [bulkUrlText, setBulkUrlText] = useState<string>('');
+
   // Photo and video files referenced in the current post, for manual download/copy. Naver's
   // editor doesn't reliably accept pasted <img>/<video> HTML tags (external URLs get dropped,
   // data URIs get stripped) but a real image dropped on the clipboard (the same way "우클릭
@@ -70,6 +84,36 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     }
   };
 
+  // Just the photo srcs, in the order they appear in the post — used to line up a bulk-
+  // pasted list of Naver URLs with the right image without the user having to pair them up
+  // one field at a time
+  const imageSrcsInOrder = useMemo(() => mediaSources.filter((m) => !m.isVideo).map((m) => m.src), [mediaSources]);
+
+  const persistNaverUrlMap = (next: Record<string, string>) => {
+    setNaverUrlMap(next);
+    localStorage.setItem('naverImageUrlMap', JSON.stringify(next));
+  };
+
+  const updateNaverUrl = (src: string, url: string) => {
+    const next = { ...naverUrlMap };
+    if (url.trim()) next[src] = url.trim();
+    else delete next[src];
+    persistNaverUrlMap(next);
+  };
+
+  // Fill each photo's Naver URL field in document order from one pasted block of URLs (one
+  // per line) — matches how photos get inserted in order when dragged/selected as a batch
+  // into a Naver draft
+  const applyBulkUrls = () => {
+    const urls = bulkUrlText.split('\n').map((line) => line.trim()).filter(Boolean);
+    const next = { ...naverUrlMap };
+    imageSrcsInOrder.forEach((src, i) => {
+      if (urls[i]) next[src] = urls[i];
+    });
+    persistNaverUrlMap(next);
+    setBulkUrlText('');
+  };
+
   // Filter posts by selected category
   const filteredPosts = posts.filter(
     (post) => selectedCategory === '전체' || post.category === selectedCategory
@@ -98,11 +142,14 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     }
   };
 
-  // Build the HTML that actually goes on the clipboard: text/formatting pastes cleanly into
-  // Naver's editor, but <img>/<video> tags don't (external URLs get dropped after paste,
-  // data URIs get stripped outright) — so both are swapped for a short manual-upload notice
-  // pointing at the download list below, instead of the actual media element
-  const buildNaverClipboardHtml = (markdownText: string): string => {
+  // Build the HTML that actually goes on the clipboard. Text/formatting pastes cleanly into
+  // Naver's editor on its own. Photos are trickier: Naver's paste sanitizer drops <img src>
+  // pointing at an outside domain and strips data URIs outright, but it keeps one pointing at
+  // its own CDN (postfiles.pstatic.net etc.) just fine — so any photo with a registered Naver
+  // URL (see naverUrlMap) gets embedded for real, right where it sits in the article. Anything
+  // without one yet (and all video, since browsers can't put video bytes on the clipboard at
+  // all) falls back to a short manual-upload notice pointing at the list below.
+  const buildNaverClipboardHtml = (markdownText: string, urlMap: Record<string, string>): string => {
     const rawHtml = marked.parse(markdownText) as string;
     const container = document.createElement('div');
     container.innerHTML = rawHtml;
@@ -115,7 +162,12 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
       el.replaceWith(notice);
     };
 
-    container.querySelectorAll('img').forEach((img) => replaceWithNotice(img, '사진', img.getAttribute('src') || ''));
+    container.querySelectorAll('img').forEach((img) => {
+      const src = img.getAttribute('src') || '';
+      const naverUrl = urlMap[src];
+      if (naverUrl) img.setAttribute('src', naverUrl);
+      else replaceWithNotice(img, '사진', src);
+    });
     container.querySelectorAll('video').forEach((video) => replaceWithNotice(video, '동영상', video.getAttribute('src') || ''));
 
     return `
@@ -127,7 +179,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
 
   // One-click Copy for Naver SmartEditor
   const handleCopyToNaver = async () => {
-    const htmlContent = buildNaverClipboardHtml(editedContent);
+    const htmlContent = buildNaverClipboardHtml(editedContent, naverUrlMap);
     try {
       // Create rich HTML Blob for clipboard so Naver SmartEditor receives styled rich text
       const blobHtml = new Blob([htmlContent], { type: 'text/html' });
@@ -336,16 +388,17 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             fontSize: '0.9rem'
           }}>
             <Sparkles size={18} />
-            서식 있는 글이 클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (사진은 "사진 복사" 후 원하는 자리에 Ctrl+V, 동영상은 다운로드해 직접 올려주세요)
+            클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (네이버 URL이 등록된 사진은 그 자리에 그대로 포함됩니다. 미등록 사진은 안내 문구로, 동영상은 다운로드해 직접 올려주세요)
           </div>
         )}
 
-        {/* Photo/Video helper: Naver's editor doesn't reliably accept pasted <img>/<video>
-            HTML tags (external URLs get dropped after paste, data URIs get stripped
-            outright). A real image on the clipboard — the same thing "우클릭 > 이미지 복사"
-            produces on any webpage — pastes in fine, so photos get a one-click clipboard
-            copy. Video bytes can't be written to the clipboard at all, so those stay
-            download-then-upload. */}
+        {/* Naver URL registration: photos with a registered pstatic.net URL get embedded for
+            real when "네이버 스마트에디터용 복사" runs (see buildNaverClipboardHtml), so the
+            whole article + inline photos paste in one shot, matching what already works when
+            copying an existing, previously-published Naver post. New photos still need one
+            manual round trip through Naver's own upload button to get that URL in the first
+            place — nothing client-side can skip that — but "사진 복사" below makes that trip
+            fast, and pasting the resulting URLs here can be done all at once, in order. */}
         {mediaSources.length > 0 && (
           <div style={{
             background: 'rgba(255, 255, 255, 0.04)',
@@ -354,15 +407,49 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             padding: '14px 18px',
             display: 'flex',
             flexDirection: 'column',
-            gap: '10px'
+            gap: '12px'
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-muted)' }}>
               <Film size={16} color="#03C75A" />
-              사진은 "사진 복사" 후 네이버 에디터에서 원하는 자리에 Ctrl+V 하세요. 동영상은 다운로드해서 동영상 추가 버튼으로 직접 올려주세요.
+              네이버 URL이 등록된 사진은 복사 시 자동으로 포함됩니다. 아직 없다면 "사진 복사"로 네이버에 한 번 올린 뒤, 그 주소를 아래에 등록해 주세요.
             </div>
-            <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
+
+            {imageSrcsInOrder.length > 0 && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
+                  네이버에 올린 순서대로 사진 주소를 한 줄에 하나씩 붙여넣으면, 이 글의 사진 순서에 맞춰 한 번에 등록됩니다.
+                </span>
+                <textarea
+                  value={bulkUrlText}
+                  onChange={(e) => setBulkUrlText(e.target.value)}
+                  placeholder={'https://postfiles.pstatic.net/...\nhttps://postfiles.pstatic.net/...'}
+                  style={{
+                    width: '100%',
+                    height: '70px',
+                    background: '#090d16',
+                    color: '#f8fafc',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    padding: '10px 12px',
+                    fontFamily: 'monospace',
+                    fontSize: '0.8rem',
+                    resize: 'vertical'
+                  }}
+                />
+                <button
+                  onClick={applyBulkUrls}
+                  className="btn-secondary"
+                  style={{ alignSelf: 'flex-start', fontSize: '0.82rem', padding: '6px 12px' }}
+                  disabled={!bulkUrlText.trim()}
+                >
+                  순서대로 채우기
+                </button>
+              </div>
+            )}
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
               {mediaSources.map(({ src, isVideo }) => (
-                <div key={src} style={{ display: 'flex', gap: '4px' }}>
+                <div key={src} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   {!isVideo && (
                     <button
                       onClick={() => copyImageToClipboard(src)}
@@ -370,7 +457,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
                       style={{ fontSize: '0.82rem', padding: '6px 12px' }}
                     >
                       {copiedImageSrc === src ? <Check size={14} /> : <Copy size={14} />}
-                      {copiedImageSrc === src ? '복사됨!' : '사진 복사'} · {src.split('/').pop()}
+                      {copiedImageSrc === src ? '복사됨!' : '사진 복사'}
                     </button>
                   )}
                   <a
@@ -380,8 +467,32 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
                     style={{ fontSize: '0.82rem', padding: '6px 12px' }}
                   >
                     <Download size={14} />
-                    {isVideo ? src.split('/').pop() : '다운로드'}
+                    다운로드
                   </a>
+                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minWidth: '90px' }}>
+                    {src.split('/').pop()}
+                  </span>
+                  {!isVideo && (
+                    <input
+                      type="text"
+                      value={naverUrlMap[src] || ''}
+                      onChange={(e) => updateNaverUrl(src, e.target.value)}
+                      placeholder="네이버 사진 URL 붙여넣기"
+                      style={{
+                        flex: 1,
+                        minWidth: '220px',
+                        background: '#090d16',
+                        color: '#f8fafc',
+                        border: `1px solid ${naverUrlMap[src] ? '#03C75A' : 'var(--border-color)'}`,
+                        borderRadius: '6px',
+                        padding: '5px 10px',
+                        fontSize: '0.78rem'
+                      }}
+                    />
+                  )}
+                  {!isVideo && naverUrlMap[src] && (
+                    <span style={{ fontSize: '0.75rem', color: '#03C75A', fontWeight: 600 }}>✓ 등록됨</span>
+                  )}
                 </div>
               ))}
             </div>
