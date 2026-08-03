@@ -12,21 +12,63 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   const [selectedCategory, setSelectedCategory] = useState<Category>('전체');
   const [selectedPost, setSelectedPost] = useState<Post>(initialPosts[0]);
   const [copiedStatus, setCopiedStatus] = useState<boolean>(false);
+  const [copiedImageSrc, setCopiedImageSrc] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedContent, setEditedContent] = useState<string>(initialPosts[0]?.content || '');
 
-  // Photo and video files referenced in the current post, for manual download. Naver's
-  // editor doesn't reliably accept pasted <img>/<video> tags (external URLs get dropped,
-  // data URIs get stripped) but uploading the same file through its own "사진/동영상 추가"
-  // button works fine — so that's the flow we point users at instead of fighting the paste
+  // Photo and video files referenced in the current post, for manual download/copy. Naver's
+  // editor doesn't reliably accept pasted <img>/<video> HTML tags (external URLs get dropped,
+  // data URIs get stripped) but a real image dropped on the clipboard (the same way "우클릭
+  // > 이미지 복사" works on any webpage) pastes in fine — see copyImageToClipboard below
   const mediaSources = useMemo(() => {
     const rawHtml = marked.parse(editedContent) as string;
     const container = document.createElement('div');
     container.innerHTML = rawHtml;
-    const images = Array.from(container.querySelectorAll('img')).map((img) => img.getAttribute('src') || '');
-    const videos = Array.from(container.querySelectorAll('video')).map((video) => video.getAttribute('src') || '');
-    return Array.from(new Set([...images, ...videos])).filter(Boolean);
+    const images = Array.from(container.querySelectorAll('img')).map((img) => ({ src: img.getAttribute('src') || '', isVideo: false }));
+    const videos = Array.from(container.querySelectorAll('video')).map((video) => ({ src: video.getAttribute('src') || '', isVideo: true }));
+    const seen = new Set<string>();
+    return [...images, ...videos].filter((m) => m.src && !seen.has(m.src) && seen.add(m.src));
   }, [editedContent]);
+
+  // Resolve a relative src (e.g. "/images/x.jpg") into an absolute URL, against the deployed
+  // base path (e.g. "/Blog/") rather than just the domain root, so it also works on GitHub
+  // Pages project sites as well as the local dev server
+  const toAbsoluteUrl = (src: string): string => {
+    try {
+      const siteBase = new URL(import.meta.env.BASE_URL, window.location.origin);
+      return new URL(src.replace(/^\//, ''), siteBase).href;
+    } catch (e) {
+      return src;
+    }
+  };
+
+  // Copy an actual photo onto the clipboard as real image bytes — exactly what the browser
+  // does for "우클릭 > 이미지 복사" — instead of an HTML/text reference to it. Chrome's
+  // Clipboard API only accepts 'image/png' for writes, so any JPEG gets re-encoded via canvas.
+  const copyImageToClipboard = async (src: string) => {
+    try {
+      const res = await fetch(toAbsoluteUrl(src));
+      const blob = await res.blob();
+      const bitmap = await createImageBitmap(blob);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = bitmap.width;
+      canvas.height = bitmap.height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) throw new Error('canvas 2d context unavailable');
+      ctx.drawImage(bitmap, 0, 0);
+
+      const pngBlob = await new Promise<Blob>((resolve, reject) => {
+        canvas.toBlob((b) => (b ? resolve(b) : reject(new Error('toBlob failed'))), 'image/png');
+      });
+
+      await navigator.clipboard.write([new ClipboardItem({ 'image/png': pngBlob })]);
+      setCopiedImageSrc(src);
+      setTimeout(() => setCopiedImageSrc(null), 2500);
+    } catch (e) {
+      alert('사진 복사에 실패했습니다. 대신 다운로드 후 직접 올려주세요.');
+    }
+  };
 
   // Filter posts by selected category
   const filteredPosts = posts.filter(
@@ -294,14 +336,16 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             fontSize: '0.9rem'
           }}>
             <Sparkles size={18} />
-            서식 있는 글이 클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (사진·동영상은 아래에서 다운로드해 직접 올려주세요)
+            서식 있는 글이 클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (사진은 "사진 복사" 후 원하는 자리에 Ctrl+V, 동영상은 다운로드해 직접 올려주세요)
           </div>
         )}
 
-        {/* Photo/Video Download Notice: Naver's editor doesn't reliably accept pasted
-            <img>/<video> tags (external URLs get dropped after paste, data URIs get
-            stripped outright), but uploading the same file through its own upload button
-            works fine — so that's the flow offered here instead of fighting the paste */}
+        {/* Photo/Video helper: Naver's editor doesn't reliably accept pasted <img>/<video>
+            HTML tags (external URLs get dropped after paste, data URIs get stripped
+            outright). A real image on the clipboard — the same thing "우클릭 > 이미지 복사"
+            produces on any webpage — pastes in fine, so photos get a one-click clipboard
+            copy. Video bytes can't be written to the clipboard at all, so those stay
+            download-then-upload. */}
         {mediaSources.length > 0 && (
           <div style={{
             background: 'rgba(255, 255, 255, 0.04)',
@@ -314,20 +358,31 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
           }}>
             <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.88rem', fontWeight: 600, color: 'var(--text-muted)' }}>
               <Film size={16} color="#03C75A" />
-              사진·동영상은 복사/붙여넣기로 들어가지 않아요 — 아래에서 다운로드 후 네이버 에디터의 사진/동영상 추가 버튼으로 직접 올려주세요.
+              사진은 "사진 복사" 후 네이버 에디터에서 원하는 자리에 Ctrl+V 하세요. 동영상은 다운로드해서 동영상 추가 버튼으로 직접 올려주세요.
             </div>
             <div style={{ display: 'flex', flexWrap: 'wrap', gap: '8px' }}>
-              {mediaSources.map((src) => (
-                <a
-                  key={src}
-                  href={src}
-                  download
-                  className="btn-secondary"
-                  style={{ fontSize: '0.82rem', padding: '6px 12px' }}
-                >
-                  <Download size={14} />
-                  {src.split('/').pop()}
-                </a>
+              {mediaSources.map(({ src, isVideo }) => (
+                <div key={src} style={{ display: 'flex', gap: '4px' }}>
+                  {!isVideo && (
+                    <button
+                      onClick={() => copyImageToClipboard(src)}
+                      className="btn-secondary"
+                      style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                    >
+                      {copiedImageSrc === src ? <Check size={14} /> : <Copy size={14} />}
+                      {copiedImageSrc === src ? '복사됨!' : '사진 복사'} · {src.split('/').pop()}
+                    </button>
+                  )}
+                  <a
+                    href={src}
+                    download
+                    className="btn-secondary"
+                    style={{ fontSize: '0.82rem', padding: '6px 12px' }}
+                  >
+                    <Download size={14} />
+                    {isVideo ? src.split('/').pop() : '다운로드'}
+                  </a>
+                </div>
               ))}
             </div>
           </div>
