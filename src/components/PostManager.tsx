@@ -24,10 +24,6 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     return Array.from(new Set(matches.map((m) => m[1])));
   }, [editedContent]);
 
-  // Naver's servers fetch pasted image URLs themselves — that only works once this site
-  // is deployed publicly, since they can't reach a localhost dev server
-  const isLocalHost = ['localhost', '127.0.0.1'].includes(window.location.hostname);
-
   // Filter posts by selected category
   const filteredPosts = posts.filter(
     (post) => selectedCategory === '전체' || post.category === selectedCategory
@@ -56,15 +52,11 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     }
   };
 
-  // Resolve a relative image src into an absolute URL. We deliberately avoid inlining
-  // images as base64: Naver's paste target caps the pasted body at 5MB, and a handful of
-  // base64-encoded photos blows past that almost immediately. An absolute URL keeps the
-  // pasted payload tiny — Naver's editor fetches the image itself from that URL — but it
-  // only works once this site is actually deployed and publicly reachable at that URL.
+  // Resolve a relative image src (e.g. "/images/x.jpg") into an absolute URL, against the
+  // deployed base path (e.g. "/Blog/") rather than just the domain root, so it also works
+  // on GitHub Pages project sites
   const toAbsoluteUrl = (src: string): string => {
     try {
-      // Resolve root-relative paths (e.g. "/images/x.jpg") against the deployed base path
-      // (e.g. "/Blog/"), not just the domain root, so this keeps working on project sites
       const siteBase = new URL(import.meta.env.BASE_URL, window.location.origin);
       const relativeSrc = src.replace(/^\//, '');
       return new URL(relativeSrc, siteBase).href;
@@ -73,18 +65,51 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     }
   };
 
-  // Build the HTML that actually goes on the clipboard: image srcs are made absolute,
-  // and <video> tags are swapped for a manual-upload notice since Naver's editor only
-  // accepts video through its own upload button, not a pasted <video src>
-  const buildNaverClipboardHtml = async (markdownText: string): Promise<string> => {
+  // Naver's paste handler doesn't reliably keep externally-hosted <img src="..."> — it
+  // shows the image briefly right after paste, then drops it once it fails to re-host the
+  // hotlinked file on its own CDN. So we embed the actual image bytes as a base64 data URI
+  // instead. That alone tends to blow past Naver's 5MB paste cap once a post has more than
+  // a couple of photos, so we downscale/re-compress each one first to keep the total small.
+  const compressImageToDataUri = async (src: string, maxDimension: number, quality: number): Promise<string> => {
+    try {
+      const res = await fetch(toAbsoluteUrl(src));
+      const blob = await res.blob();
+      const bitmap = await createImageBitmap(blob);
+
+      const scale = Math.min(1, maxDimension / Math.max(bitmap.width, bitmap.height));
+      const width = Math.round(bitmap.width * scale);
+      const height = Math.round(bitmap.height * scale);
+
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return toAbsoluteUrl(src);
+      ctx.drawImage(bitmap, 0, 0, width, height);
+
+      return canvas.toDataURL('image/jpeg', quality);
+    } catch (e) {
+      // If fetching/compressing fails (e.g. offline), fall back to a plain URL reference
+      return toAbsoluteUrl(src);
+    }
+  };
+
+  // Build the HTML that actually goes on the clipboard: images are compressed and embedded
+  // as data URIs, and <video> tags are swapped for a manual-upload notice since Naver's
+  // editor only accepts video through its own upload button, not a pasted <video src>
+  const buildNaverClipboardHtml = async (
+    markdownText: string,
+    imageOptions: { maxDimension: number; quality: number }
+  ): Promise<string> => {
     const rawHtml = marked.parse(markdownText) as string;
     const container = document.createElement('div');
     container.innerHTML = rawHtml;
 
-    container.querySelectorAll('img').forEach((img) => {
+    const images = Array.from(container.querySelectorAll('img'));
+    await Promise.all(images.map(async (img) => {
       const src = img.getAttribute('src');
-      if (src) img.setAttribute('src', toAbsoluteUrl(src));
-    });
+      if (src) img.setAttribute('src', await compressImageToDataUri(src, imageOptions.maxDimension, imageOptions.quality));
+    }));
 
     container.querySelectorAll('video').forEach((video) => {
       const src = video.getAttribute('src') || '';
@@ -102,11 +127,19 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     `;
   };
 
+  // Stay safely under Naver's ~5MB paste cap
+  const MAX_CLIPBOARD_BYTES = 4.5 * 1024 * 1024;
+
   // One-click Copy for Naver SmartEditor
   const handleCopyToNaver = async () => {
     setIsPreparingCopy(true);
     try {
-      const htmlContent = await buildNaverClipboardHtml(editedContent);
+      let htmlContent = await buildNaverClipboardHtml(editedContent, { maxDimension: 1280, quality: 0.72 });
+      // If a post has a lot of photos, the first pass can still land close to the cap —
+      // compress harder once and try again rather than let the paste fail in Naver
+      if (new Blob([htmlContent]).size > MAX_CLIPBOARD_BYTES) {
+        htmlContent = await buildNaverClipboardHtml(editedContent, { maxDimension: 900, quality: 0.5 });
+      }
       // Create rich HTML Blob for clipboard so Naver SmartEditor receives styled rich text
       const blobHtml = new Blob([htmlContent], { type: 'text/html' });
       const blobText = new Blob([editedContent], { type: 'text/plain' });
@@ -318,9 +351,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             fontSize: '0.9rem'
           }}>
             <Sparkles size={18} />
-            {isLocalHost
-              ? '클립보드에 복사되었습니다! (단, 지금은 localhost라 사진 URL을 네이버가 못 읽어와요 — 배포 후 이 화면에서 다시 복사해야 사진이 붙여넣기 됩니다)'
-              : '클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (사진은 URL로 연결되어 자동으로 채워집니다)'}
+            클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (사진은 압축되어 함께 포함됩니다)
           </div>
         )}
 
