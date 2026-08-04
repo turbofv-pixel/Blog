@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "publish:naver": "node automation/publish-to-naver.mjs"
   },
   "dependencies": {
     "lucide-react": "^0.344.0",
@@ -19,6 +20,7 @@
     "@types/react": "^18.2.61",
     "@types/react-dom": "^18.2.19",
     "@vitejs/plugin-react": "^4.2.1",
+    "playwright": "^1.62.1",
     "typescript": "^5.3.3",
     "vite": "^5.1.4"
   }

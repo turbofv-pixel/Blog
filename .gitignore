@@ -30,3 +30,6 @@ pnpm-debug.log*
 
 # Temporary outputs
 temp_uploads/
+
+# Naver login session for the publish automation (contains auth cookies)
+.naver-session/
