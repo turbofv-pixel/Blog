@@ -472,7 +472,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
                     </button>
                   )}
                   <a
-                    href={src}
+                    href={toAbsoluteUrl(src)}
                     download
                     className="btn-secondary"
                     style={{ fontSize: '0.82rem', padding: '6px 12px' }}
