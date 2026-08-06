@@ -225,7 +225,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
       tags: [categoryName, '네이버블로그'],
       naverCategory: categoryName,
       content: `# 새 ${categoryName} 포스트\n\n네이버 블로그에 포스팅할 마크다운 원본을 작성해 보세요.\n\n--- \n\n## 1. 첫 번째 주제\n\n내용을 여기에 작성합니다.`,
-      filePath: `posts/${categoryName === '육아' ? 'parenting' : categoryName === 'IT' ? 'it' : 'travel'}/new-post-${Date.now()}.md`
+      filePath: `posts/${categoryName === '육아' ? 'parenting' : categoryName === 'IT' ? 'it' : categoryName === '주식' ? 'stock' : 'travel'}/new-post-${Date.now()}.md`
     };
 
     setPosts([newPost, ...posts]);
@@ -239,6 +239,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
       case '육아': return 'badge-parenting';
       case 'IT': return 'badge-it';
       case '여행': return 'badge-travel';
+      case '주식': return 'badge-stock';
       default: return 'badge-it';
     }
   };
@@ -255,7 +256,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             카테고리 선택
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {(['전체', '육아', 'IT', '여행'] as Category[]).map((cat) => (
+            {(['전체', '육아', 'IT', '여행', '주식'] as Category[]).map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}

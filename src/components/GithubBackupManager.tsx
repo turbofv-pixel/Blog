@@ -39,7 +39,7 @@ export const GithubBackupManager: React.FC = () => {
             1. 카테고리별 마크다운 저장 구조
           </div>
           <p style={{ fontSize: '0.85rem', color: 'var(--text-muted)', lineHeight: 1.6 }}>
-            로컬 프로젝트 폴더의 <code>posts/parenting</code>, <code>posts/it</code>, <code>posts/travel</code> 디렉토리에 각 `.md` 파일이 분류되어 저장됩니다.
+            로컬 프로젝트 폴더의 <code>posts/parenting</code>, <code>posts/it</code>, <code>posts/travel</code>, <code>posts/stock</code> 디렉토리에 각 `.md` 파일이 분류되어 저장됩니다.
           </p>
         </div>
 
