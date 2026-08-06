@@ -127,14 +127,25 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     setCopiedStatus(false);
   };
 
-  // Convert Markdown to Naver SmartEditor ONE formatted HTML (used for on-screen preview)
+  // Convert Markdown to Naver SmartEditor ONE formatted HTML (used for on-screen preview).
+  // Post content references media with root-absolute paths like "/images/x.jpg", which the
+  // browser resolves against the domain root — wrong once the app is served under a base path
+  // (e.g. GitHub Pages project sites at "/Blog/"). Rewrite every img/video src through
+  // toAbsoluteUrl so the preview (and the live site, which renders through this same path)
+  // actually loads the file instead of 404ing.
   const getNaverFormattedHtml = (markdownText: string) => {
     try {
       const rawHtml = marked.parse(markdownText) as string;
+      const container = document.createElement('div');
+      container.innerHTML = rawHtml;
+      container.querySelectorAll('img, video').forEach((el) => {
+        const src = el.getAttribute('src');
+        if (src) el.setAttribute('src', toAbsoluteUrl(src));
+      });
       // Wrap with Naver SmartEditor inline styles
       return `
         <div style="font-family: 'Maru Buri', 'Nanum Gothic', sans-serif; color: #222222; font-size: 16px; line-height: 1.8;">
-          ${rawHtml}
+          ${container.innerHTML}
         </div>
       `;
     } catch (e) {
@@ -217,6 +228,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   // Create New Post Modal / Action
   const handleCreateNewPost = () => {
     const categoryName = selectedCategory === '전체' ? '육아' : selectedCategory;
+    const categoryDir = categoryName === '육아' ? 'parenting' : categoryName === 'IT' ? 'it' : categoryName === '주식' ? 'stock' : 'travel';
     const newPost: Post = {
       id: `post-${Date.now()}`,
       title: `[새 포스트] ${categoryName} 주제 글`,
@@ -225,7 +237,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
       tags: [categoryName, '네이버블로그'],
       naverCategory: categoryName,
       content: `# 새 ${categoryName} 포스트\n\n네이버 블로그에 포스팅할 마크다운 원본을 작성해 보세요.\n\n--- \n\n## 1. 첫 번째 주제\n\n내용을 여기에 작성합니다.`,
-      filePath: `posts/${categoryName === '육아' ? 'parenting' : categoryName === 'IT' ? 'it' : categoryName === '주식' ? 'stock' : 'travel'}/new-post-${Date.now()}.md`
+      filePath: `posts/${categoryDir}/new-post-${Date.now()}.md`
     };
 
     setPosts([newPost, ...posts]);
@@ -462,7 +474,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
                     </button>
                   )}
                   <a
-                    href={src}
+                    href={toAbsoluteUrl(src)}
                     download
                     className="btn-secondary"
                     style={{ fontSize: '0.82rem', padding: '6px 12px' }}
