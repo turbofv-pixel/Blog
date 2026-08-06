@@ -43,11 +43,11 @@
   <!-- arrows between kuma-dp and kuma-cp -->
   <line x1="225" y1="198" x2="345" y2="165" stroke="#333333" stroke-width="2" marker-end="url(#arrow2)"/>
   <line x1="345" y1="165" x2="225" y2="198" stroke="#333333" stroke-width="2" marker-end="url(#arrow2)"/>
-  <text x="285" y="150" text-anchor="middle" font-size="12" font-weight="700" fill="#111111">xDS / mTLS</text>
+  <text x="285" y="150" text-anchor="middle" font-size="12" font-weight="700" fill="#111111">xDS</text>
 
   <line x1="675" y1="198" x2="555" y2="165" stroke="#333333" stroke-width="2" marker-end="url(#arrow2)"/>
   <line x1="555" y1="165" x2="675" y2="198" stroke="#333333" stroke-width="2" marker-end="url(#arrow2)"/>
-  <text x="615" y="150" text-anchor="middle" font-size="12" font-weight="700" fill="#111111">xDS / mTLS</text>
+  <text x="615" y="150" text-anchor="middle" font-size="12" font-weight="700" fill="#111111">xDS</text>
 
   <text x="450" y="380" text-anchor="middle" font-size="13" fill="#777777">k8s API 서버 없이도, VM에 설치된 kuma-dp가 Dataplane 토큰으로 kuma-cp에 직접 등록된다</text>
 </svg>

@@ -44,11 +44,11 @@
   <text x="204" y="242" text-anchor="middle" font-size="11" fill="#555555">localhost</text>
 
   <line x1="400" y1="255" x2="498" y2="255" stroke="#333333" stroke-width="2.5" marker-end="url(#arrow)"/>
-  <text x="450" y="242" text-anchor="middle" font-size="13" font-weight="700" fill="#111111">mTLS</text>
+  <text x="450" y="242" text-anchor="middle" font-size="13" font-weight="700" fill="#111111">HTTP</text>
 
   <line x1="670" y1="255" x2="718" y2="255" stroke="#333333" stroke-width="2" marker-end="url(#arrow)"/>
   <text x="694" y="242" text-anchor="middle" font-size="11" fill="#555555">localhost</text>
 
   <!-- caption -->
-  <text x="450" y="360" text-anchor="middle" font-size="13" fill="#777777">서비스는 localhost로만 통신하고, 암호화·정책 적용은 옆의 사이드카가 전담한다</text>
+  <text x="450" y="360" text-anchor="middle" font-size="13" fill="#777777">서비스는 localhost로만 통신하고, 트래픽 제어·정책 적용은 옆의 사이드카가 전담한다</text>
 </svg>
