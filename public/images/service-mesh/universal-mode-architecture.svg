@@ -1,0 +1,53 @@
+<svg viewBox="0 0 900 420" xmlns="http://www.w3.org/2000/svg" font-family="'Nanum Gothic','Malgun Gothic',sans-serif">
+  <title>Kuma Universal 모드 아키텍처</title>
+  <defs>
+    <marker id="arrow2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#333333"/>
+    </marker>
+  </defs>
+
+  <rect x="0" y="0" width="900" height="420" fill="#ffffff"/>
+
+  <!-- VM 1 -->
+  <rect x="30" y="60" width="220" height="180" rx="12" fill="#f5f7fa" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="140" y="86" text-anchor="middle" font-size="14" font-weight="700" fill="#475569">VM #1 (IaaS)</text>
+  <rect x="55" y="100" width="170" height="55" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+  <text x="140" y="133" text-anchor="middle" font-size="15" font-weight="700" fill="#222222">서비스</text>
+  <rect x="55" y="170" width="170" height="55" rx="8" fill="#eaf7ef" stroke="#03C75A" stroke-width="2"/>
+  <text x="140" y="198" text-anchor="middle" font-size="13" font-weight="700" fill="#0a7a3c">kuma-dp</text>
+  <text x="140" y="215" text-anchor="middle" font-size="11" fill="#0a7a3c">(Envoy)</text>
+
+  <!-- VM 2 -->
+  <rect x="650" y="60" width="220" height="180" rx="12" fill="#f5f7fa" stroke="#94a3b8" stroke-width="2" stroke-dasharray="5 4"/>
+  <text x="760" y="86" text-anchor="middle" font-size="14" font-weight="700" fill="#475569">VM #2 (IaaS)</text>
+  <rect x="675" y="100" width="170" height="55" rx="8" fill="#ffffff" stroke="#94a3b8" stroke-width="2"/>
+  <text x="760" y="133" text-anchor="middle" font-size="15" font-weight="700" fill="#222222">서비스</text>
+  <rect x="675" y="170" width="170" height="55" rx="8" fill="#eaf7ef" stroke="#03C75A" stroke-width="2"/>
+  <text x="760" y="198" text-anchor="middle" font-size="13" font-weight="700" fill="#0a7a3c">kuma-dp</text>
+  <text x="760" y="215" text-anchor="middle" font-size="11" fill="#0a7a3c">(Envoy)</text>
+
+  <!-- kuma-cp -->
+  <rect x="345" y="130" width="210" height="70" rx="10" fill="#03C75A" opacity="0.1" stroke="#03C75A" stroke-width="2.5"/>
+  <text x="450" y="160" text-anchor="middle" font-size="17" font-weight="700" fill="#111111">kuma-cp</text>
+  <text x="450" y="180" text-anchor="middle" font-size="12" fill="#333333">(컨트롤 플레인)</text>
+
+  <!-- Postgres -->
+  <ellipse cx="450" cy="290" rx="70" ry="16" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <rect x="380" y="290" width="140" height="34" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <ellipse cx="450" cy="324" rx="70" ry="16" fill="#eef2ff" stroke="#6366f1" stroke-width="2"/>
+  <line x1="380" y1="290" x2="380" y2="324" stroke="#6366f1" stroke-width="2"/>
+  <line x1="520" y1="290" x2="520" y2="324" stroke="#6366f1" stroke-width="2"/>
+  <text x="450" y="310" text-anchor="middle" font-size="12" fill="#4338ca">정책 · 상태 저장</text>
+  <line x1="450" y1="200" x2="450" y2="274" stroke="#6366f1" stroke-width="2" marker-end="url(#arrow2)"/>
+
+  <!-- arrows between kuma-dp and kuma-cp -->
+  <line x1="225" y1="198" x2="345" y2="165" stroke="#333333" stroke-width="2" marker-end="url(#arrow2)"/>
+  <line x1="345" y1="165" x2="225" y2="198" stroke="#333333" stroke-width="2" marker-end="url(#arrow2)"/>
+  <text x="285" y="150" text-anchor="middle" font-size="12" font-weight="700" fill="#111111">xDS / mTLS</text>
+
+  <line x1="675" y1="198" x2="555" y2="165" stroke="#333333" stroke-width="2" marker-end="url(#arrow2)"/>
+  <line x1="555" y1="165" x2="675" y2="198" stroke="#333333" stroke-width="2" marker-end="url(#arrow2)"/>
+  <text x="615" y="150" text-anchor="middle" font-size="12" font-weight="700" fill="#111111">xDS / mTLS</text>
+
+  <text x="450" y="380" text-anchor="middle" font-size="13" fill="#777777">k8s API 서버 없이도, VM에 설치된 kuma-dp가 Dataplane 토큰으로 kuma-cp에 직접 등록된다</text>
+</svg>
