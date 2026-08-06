@@ -1,0 +1,61 @@
+<svg viewBox="0 0 900 520" xmlns="http://www.w3.org/2000/svg" font-family="'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif">
+  <rect width="900" height="520" rx="24" fill="#0f172a"/>
+  <text x="450" y="46" text-anchor="middle" font-size="26" font-weight="800" fill="#f8fafc">호가창 읽는 법</text>
+  <text x="450" y="72" text-anchor="middle" font-size="15" fill="#94a3b8">위쪽은 팔려는 사람(매도), 아래쪽은 사려는 사람(매수)</text>
+
+  <!-- center divider line -->
+  <line x1="450" y1="100" x2="450" y2="440" stroke="#1e293b" stroke-width="1"/>
+
+  <!-- Sell rows (매도), price desc, nearest-to-current at bottom of this block -->
+  <g font-size="16">
+    <!-- row: 51,100 -->
+    <rect x="290" y="102" width="160" height="34" rx="4" fill="#ef4444" opacity="0.35"/>
+    <text x="270" y="124" text-anchor="end" fill="#fca5a5">300</text>
+    <text x="450" y="124" text-anchor="middle" fill="#f1f5f9" font-weight="700">51,100</text>
+
+    <!-- row: 51,000 -->
+    <rect x="240" y="142" width="210" height="34" rx="4" fill="#ef4444" opacity="0.35"/>
+    <text x="220" y="164" text-anchor="end" fill="#fca5a5">490</text>
+    <text x="450" y="164" text-anchor="middle" fill="#f1f5f9" font-weight="700">51,000</text>
+
+    <!-- row: 50,900 -->
+    <rect x="190" y="182" width="260" height="34" rx="4" fill="#ef4444" opacity="0.35"/>
+    <text x="170" y="204" text-anchor="end" fill="#fca5a5">640</text>
+    <text x="450" y="204" text-anchor="middle" fill="#f1f5f9" font-weight="700">50,900</text>
+
+    <!-- row: 50,800 (nearest to current) -->
+    <rect x="140" y="222" width="310" height="34" rx="4" fill="#ef4444" opacity="0.45"/>
+    <text x="120" y="244" text-anchor="end" fill="#fca5a5">910</text>
+    <text x="450" y="244" text-anchor="middle" fill="#f1f5f9" font-weight="700">50,800</text>
+  </g>
+
+  <!-- current price divider -->
+  <rect x="330" y="256" width="240" height="38" rx="8" fill="rgba(251,191,36,0.15)" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="450" y="280" text-anchor="middle" font-size="18" font-weight="800" fill="#fbbf24">현재가 50,750 ▲ 0.24%</text>
+
+  <!-- Buy rows (매수), price desc, nearest-to-current at top of this block -->
+  <g font-size="16">
+    <!-- row: 50,700 (nearest to current) -->
+    <rect x="450" y="336" width="310" height="34" rx="4" fill="#03C75A" opacity="0.45"/>
+    <text x="780" y="358" text-anchor="start" fill="#6ee7b7">1,020</text>
+    <text x="450" y="358" text-anchor="middle" fill="#f1f5f9" font-weight="700">50,700</text>
+
+    <!-- row: 50,600 -->
+    <rect x="450" y="376" width="260" height="34" rx="4" fill="#03C75A" opacity="0.35"/>
+    <text x="730" y="398" text-anchor="start" fill="#6ee7b7">760</text>
+    <text x="450" y="398" text-anchor="middle" fill="#f1f5f9" font-weight="700">50,600</text>
+
+    <!-- row: 50,500 -->
+    <rect x="450" y="416" width="210" height="34" rx="4" fill="#03C75A" opacity="0.35"/>
+    <text x="680" y="438" text-anchor="start" fill="#6ee7b7">520</text>
+    <text x="450" y="438" text-anchor="middle" fill="#f1f5f9" font-weight="700">50,500</text>
+
+    <!-- row: 50,400 -->
+    <rect x="450" y="456" width="160" height="34" rx="4" fill="#03C75A" opacity="0.35"/>
+    <text x="630" y="478" text-anchor="start" fill="#6ee7b7">310</text>
+    <text x="450" y="478" text-anchor="middle" fill="#f1f5f9" font-weight="700">50,400</text>
+  </g>
+
+  <text x="130" y="94" text-anchor="end" font-size="14" fill="#94a3b8">매도잔량</text>
+  <text x="770" y="322" font-size="14" fill="#94a3b8">매수잔량</text>
+</svg>
