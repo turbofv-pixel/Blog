@@ -21,6 +21,8 @@ const samplePosts: Post[] = [
 
 오늘은 **주식을 태어나서 처음 시작하는 분들**을 위해, 계좌 개설부터 기본 용어, 매매 방법, 그리고 반드시 지켜야 할 투자 원칙까지 순서대로 정리해봤어요. 이 글 하나만 정독해도 "주린이" 딱지는 뗄 수 있을 거예요 📈
 
+![주식 공부 첫걸음, 초보자 가이드 - PER, PBR, 호가창, 배당금](/images/stock-investing-beginner/hero-stock-study.svg)
+
 ---
 
 ## 1. 주식이란 무엇일까요?
@@ -35,6 +37,8 @@ const samplePosts: Post[] = [
 ---
 
 ## 2. 주식 시작 전 준비물 3가지
+
+![주식 시작 전 준비물 3단계: 증권계좌 개설, 여유자금 준비, HTS·MTS 익히기](/images/stock-investing-beginner/account-setup-steps.svg)
 
 ### ① 증권계좌 개설
 
@@ -54,6 +58,8 @@ const samplePosts: Post[] = [
 ---
 
 ## 3. 초보자가 꼭 알아야 할 기본 용어
+
+![캔들 하나로 보는 시가, 종가, 고가, 저가 - 양봉과 음봉 비교](/images/stock-investing-beginner/candlestick-explained.svg)
 
 | 용어 | 뜻 |
 | --- | --- |
@@ -84,6 +90,8 @@ const samplePosts: Post[] = [
 ### 호가창 읽는 법
 
 호가창은 현재 사려는 사람들과 팔려는 사람들이 걸어둔 가격들을 보여주는 창이에요. 위쪽은 매도(팔려는) 호가, 아래쪽은 매수(사려는) 호가로 구성되어 있어요.
+
+![호가창 읽는 법 - 매도잔량과 매수잔량, 현재가 예시](/images/stock-investing-beginner/order-book-example.svg)
 
 \`\`\`text
 [매도 호가] 51,000원 ▲

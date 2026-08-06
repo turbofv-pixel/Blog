@@ -1,0 +1,82 @@
+<svg viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg" font-family="'Malgun Gothic','Apple SD Gothic Neo','Noto Sans KR',sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#0b1220"/>
+      <stop offset="100%" stop-color="#131c31"/>
+    </linearGradient>
+    <linearGradient id="bar1" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#03C75A" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#03C75A"/>
+    </linearGradient>
+    <linearGradient id="bar2" x1="0" y1="1" x2="0" y2="0">
+      <stop offset="0%" stop-color="#60a5fa" stop-opacity="0.25"/>
+      <stop offset="100%" stop-color="#60a5fa"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="50%" cy="50%" r="50%">
+      <stop offset="0%" stop-color="#fbbf24" stop-opacity="0.35"/>
+      <stop offset="100%" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bg)"/>
+
+  <!-- soft grid -->
+  <g stroke="#1e2a45" stroke-width="1">
+    <line x1="0" y1="150" x2="1200" y2="150"/>
+    <line x1="0" y1="300" x2="1200" y2="300"/>
+    <line x1="0" y1="450" x2="1200" y2="450"/>
+  </g>
+
+  <circle cx="1000" cy="160" r="220" fill="url(#glow)"/>
+
+  <!-- rising bar chart bottom-right -->
+  <g>
+    <rect x="760" y="430" width="46" height="120" rx="6" fill="url(#bar2)"/>
+    <rect x="826" y="390" width="46" height="160" rx="6" fill="url(#bar1)"/>
+    <rect x="892" y="340" width="46" height="210" rx="6" fill="url(#bar2)"/>
+    <rect x="958" y="280" width="46" height="270" rx="6" fill="url(#bar1)"/>
+    <rect x="1024" y="210" width="46" height="340" rx="6" fill="url(#bar2)"/>
+  </g>
+
+  <!-- upward trend line with dot markers -->
+  <polyline points="770,470 836,420 902,380 968,320 1034,260 1090,190"
+            fill="none" stroke="#fbbf24" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <g fill="#fbbf24">
+    <circle cx="770" cy="470" r="7"/>
+    <circle cx="836" cy="420" r="7"/>
+    <circle cx="902" cy="380" r="7"/>
+    <circle cx="968" cy="320" r="7"/>
+    <circle cx="1034" cy="260" r="7"/>
+    <circle cx="1090" cy="190" r="9"/>
+  </g>
+  <!-- arrow head -->
+  <path d="M1090,190 L1120,150 M1090,190 L1128,205 M1090,190 L1075,225" stroke="#fbbf24" stroke-width="5" stroke-linecap="round" fill="none"/>
+
+  <!-- coin icons -->
+  <g>
+    <circle cx="150" cy="120" r="34" fill="#fbbf24" opacity="0.9"/>
+    <text x="150" y="132" font-size="30" text-anchor="middle" fill="#0b1220" font-weight="700">₩</text>
+    <circle cx="230" cy="90" r="20" fill="#fbbf24" opacity="0.5"/>
+    <text x="230" y="98" font-size="18" text-anchor="middle" fill="#0b1220" font-weight="700">₩</text>
+  </g>
+
+  <!-- Title -->
+  <text x="90" y="300" font-size="58" font-weight="800" fill="#f8fafc">주식 공부, 첫걸음</text>
+  <text x="90" y="360" font-size="58" font-weight="800" fill="#03C75A">초보자 가이드 📈</text>
+  <text x="90" y="410" font-size="24" fill="#94a3b8">처음 시작하는 분들을 위한 필수 개념 총정리</text>
+
+  <!-- tag chips -->
+  <g font-size="18" font-weight="600">
+    <rect x="90" y="450" width="96" height="40" rx="20" fill="rgba(251,191,36,0.15)" stroke="#fbbf24" stroke-opacity="0.5"/>
+    <text x="138" y="476" text-anchor="middle" fill="#fbbf24">PER</text>
+
+    <rect x="198" y="450" width="96" height="40" rx="20" fill="rgba(96,165,250,0.15)" stroke="#60a5fa" stroke-opacity="0.5"/>
+    <text x="246" y="476" text-anchor="middle" fill="#60a5fa">PBR</text>
+
+    <rect x="306" y="450" width="110" height="40" rx="20" fill="rgba(3,199,90,0.15)" stroke="#03C75A" stroke-opacity="0.5"/>
+    <text x="361" y="476" text-anchor="middle" fill="#34d399">호가창</text>
+
+    <rect x="428" y="450" width="110" height="40" rx="20" fill="rgba(244,114,182,0.15)" stroke="#f472b6" stroke-opacity="0.5"/>
+    <text x="483" y="476" text-anchor="middle" fill="#f472b6">배당금</text>
+  </g>
+</svg>
