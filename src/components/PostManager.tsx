@@ -127,14 +127,25 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     setCopiedStatus(false);
   };
 
-  // Convert Markdown to Naver SmartEditor ONE formatted HTML (used for on-screen preview)
+  // Convert Markdown to Naver SmartEditor ONE formatted HTML (used for on-screen preview).
+  // Post content references media with root-absolute paths like "/images/x.jpg", which the
+  // browser resolves against the domain root — wrong once the app is served under a base path
+  // (e.g. GitHub Pages project sites at "/Blog/"). Rewrite every img/video src through
+  // toAbsoluteUrl so the preview (and the live site, which renders through this same path)
+  // actually loads the file instead of 404ing.
   const getNaverFormattedHtml = (markdownText: string) => {
     try {
       const rawHtml = marked.parse(markdownText) as string;
+      const container = document.createElement('div');
+      container.innerHTML = rawHtml;
+      container.querySelectorAll('img, video').forEach((el) => {
+        const src = el.getAttribute('src');
+        if (src) el.setAttribute('src', toAbsoluteUrl(src));
+      });
       // Wrap with Naver SmartEditor inline styles
       return `
         <div style="font-family: 'Maru Buri', 'Nanum Gothic', sans-serif; color: #222222; font-size: 16px; line-height: 1.8;">
-          ${rawHtml}
+          ${container.innerHTML}
         </div>
       `;
     } catch (e) {
@@ -463,7 +474,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
                     </button>
                   )}
                   <a
-                    href={src}
+                    href={toAbsoluteUrl(src)}
                     download
                     className="btn-secondary"
                     style={{ fontSize: '0.82rem', padding: '6px 12px' }}
