@@ -53,7 +53,7 @@ Kuma도 다른 서비스 메시와 마찬가지로 컨트롤 플레인/데이터
 ### Universal 모드
 IaaS/VM 환경에서는 이 모드를 씁니다. 각 VM에 \`kuma-dp\` 바이너리를 직접 설치해서 서비스와 나란히 실행시키고, 발급받은 **Dataplane 토큰**으로 컨트롤 플레인에 자신을 등록해요. 컨트롤 플레인은 별도의 저장소(Postgres 등)에 상태를 저장하기 때문에 k8s API 서버 없이도 완전히 독립적으로 동작합니다.
 
-![Kuma Universal 모드 아키텍처 - VM에 설치된 kuma-dp가 kuma-cp에 직접 등록되는 구조](/images/service-mesh/universal-mode-architecture.svg)
+![Kuma Universal 모드 아키텍처 - VM에 설치된 kuma-dp가 kuma-cp에 직접 등록되는 구조](/images/service-mesh/universal-mode-architecture.png)
 
 덕분에 기존 VM 위에서 돌아가던 서비스를 코드 변경 없이, 배포 파이프라인에 \`kuma-dp\` 설치 단계만 추가해서 메시에 편입시킬 수 있었어요. 이게 저희가 Kuma를 선택한 가장 결정적인 이유였습니다.
 
@@ -66,7 +66,7 @@ IaaS 환경은 보통 여러 가용 영역(AZ)이나 데이터센터에 걸쳐 �
 - **Global CP**: 정책의 단일 진실 공급원(source of truth). 메시 정책을 여기 한 곳에만 선언
 - **Zone CP**: 각 영역/데이터센터마다 하나씩 떠서, 그 안의 로컬 Dataplane들을 관리. Global CP와 동기화하며 정책을 전달받음
 
-![Zone CP / Global CP 멀티존 구조 - 정책은 Global CP에서 중앙 관리, 트래픽 처리는 각 Zone에서 로컬로 처리](/images/service-mesh/zone-global-cp.svg)
+![Zone CP / Global CP 멀티존 구조 - 정책은 Global CP에서 중앙 관리, 트래픽 처리는 각 Zone에서 로컬로 처리](/images/service-mesh/zone-global-cp.png)
 
 이 구조 덕분에 정책은 한 곳에서 중앙 관리하면서도, 실제 트래픽 라우팅 결정은 각 Zone 안에서 로컬로 처리돼서 존 간 네트워크 장애가 다른 존에 영향을 주지 않아요. 여러 가용 영역에 걸쳐 있는 IaaS 인프라 구조와 궁합이 잘 맞았던 부분이에요.
 
@@ -166,7 +166,7 @@ spec:
 
 이걸 구현하는 대표적인 패턴이 **사이드카 프록시(Sidecar Proxy)**예요.
 
-![사이드카 프록시 패턴 - 서비스는 localhost로 통신하고 컨트롤 플레인이 정책을 사이드카에 배포](/images/service-mesh/sidecar-proxy-pattern.svg)
+![사이드카 프록시 패턴 - 서비스는 localhost로 통신하고 컨트롤 플레인이 정책을 사이드카에 배포](/images/service-mesh/sidecar-proxy-pattern.png)
 
 각 서비스 인스턴스 옆에 작은 프록시(대표적으로 **Envoy**)를 하나씩 붙여두고, 서비스가 보내는 모든 요청은 실제로는 이 사이드카를 거쳐 나가고 들어와요. 서비스 코드 입장에서는 그냥 \`localhost\`로 요청하는 것뿐이고, 재시도·서킷 브레이커·트래픽 분산 같은 건 전부 사이드카가 알아서 처리해줍니다.
 
