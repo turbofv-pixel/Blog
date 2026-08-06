@@ -37,7 +37,7 @@ naverCategory: "IT·컴퓨터"
 
 이걸 구현하는 대표적인 패턴이 **사이드카 프록시(Sidecar Proxy)**예요.
 
-![사이드카 프록시 패턴 - 서비스는 localhost로 통신하고 컨트롤 플레인이 정책을 사이드카에 배포](/images/service-mesh/sidecar-proxy-pattern.svg)
+![사이드카 프록시 패턴 - 서비스는 localhost로 통신하고 컨트롤 플레인이 정책을 사이드카에 배포](/images/service-mesh/sidecar-proxy-pattern.png)
 
 각 서비스 인스턴스 옆에 작은 프록시(대표적으로 **Envoy**)를 하나씩 붙여두고, 서비스가 보내는 모든 요청은 실제로는 이 사이드카를 거쳐 나가고 들어와요. 서비스 코드 입장에서는 그냥 `localhost`로 요청하는 것뿐이고, 재시도·서킷 브레이커·트래픽 분산 같은 건 전부 사이드카가 알아서 처리해줍니다.
 
