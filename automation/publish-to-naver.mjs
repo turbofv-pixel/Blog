@@ -25,6 +25,18 @@ import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+// See the matching comment in src/components/PostManager.tsx: marked's default GFM 'del'
+// rule treats a single '~' as a valid strikethrough delimiter, which collides with Korean
+// posts' use of '~' as a range dash (e.g. "20~25배 ... 0.90~0.95배"). We never intend
+// strikethrough here, so disable the rule instead of escaping every dash by hand.
+marked.use({
+  tokenizer: {
+    del() {
+      return undefined;
+    },
+  },
+});
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO_ROOT = path.resolve(__dirname, '..');
 const SESSION_DIR = path.join(REPO_ROOT, '.naver-session');
