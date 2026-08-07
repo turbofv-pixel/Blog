@@ -21,7 +21,7 @@ const samplePosts: Post[] = [
 
 오늘은 **주식을 태어나서 처음 시작하는 분들**을 위해, 계좌 개설부터 기본 용어, 매매 방법, 그리고 반드시 지켜야 할 투자 원칙까지 순서대로 정리해봤어요. 이 글 하나만 정독해도 "주린이" 딱지는 뗄 수 있을 거예요 📈
 
-![주식 공부 첫걸음, 초보자 가이드 - PER, PBR, 호가창, 배당금](/images/stock-investing-beginner/hero-stock-study.svg)
+![주식 공부 첫걸음, 초보자 가이드 - PER, PBR, 호가창, 배당금](/images/stock-investing-beginner/hero-stock-study.png)
 
 ---
 
@@ -38,7 +38,7 @@ const samplePosts: Post[] = [
 
 ## 2. 주식 시작 전 준비물 3가지
 
-![주식 시작 전 준비물 3단계: 증권계좌 개설, 여유자금 준비, HTS·MTS 익히기](/images/stock-investing-beginner/account-setup-steps.svg)
+![주식 시작 전 준비물 3단계: 증권계좌 개설, 여유자금 준비, HTS·MTS 익히기](/images/stock-investing-beginner/account-setup-steps.png)
 
 ### ① 증권계좌 개설
 
@@ -59,7 +59,7 @@ const samplePosts: Post[] = [
 
 ## 3. 초보자가 꼭 알아야 할 기본 용어
 
-![캔들 하나로 보는 시가, 종가, 고가, 저가 - 양봉과 음봉 비교](/images/stock-investing-beginner/candlestick-explained.svg)
+![캔들 하나로 보는 시가, 종가, 고가, 저가 - 양봉과 음봉 비교](/images/stock-investing-beginner/candlestick-explained.png)
 
 | 용어 | 뜻 |
 | --- | --- |
@@ -91,7 +91,7 @@ const samplePosts: Post[] = [
 
 호가창은 현재 사려는 사람들과 팔려는 사람들이 걸어둔 가격들을 보여주는 창이에요. 위쪽은 매도(팔려는) 호가, 아래쪽은 매수(사려는) 호가로 구성되어 있어요.
 
-![호가창 읽는 법 - 매도잔량과 매수잔량, 현재가 예시](/images/stock-investing-beginner/order-book-example.svg)
+![호가창 읽는 법 - 매도잔량과 매수잔량, 현재가 예시](/images/stock-investing-beginner/order-book-example.png)
 
 \`\`\`text
 [매도 호가] 51,000원 ▲
@@ -147,7 +147,7 @@ const samplePosts: Post[] = [
     filePath: 'posts/stock/hanon-systems-analysis.md',
     content: `# 한온시스템(018880) 주가 분석 - 흔들리는 코스피 속, 반등은 가능할까?
 
-![한온시스템(018880) 주식분석 커버 이미지 - 현재가 3,305원, 유상증자 발행가 2,830원, 목표주가 컨센서스 4,200~4,700원](/images/hanon-systems-stock/hanon-systems-cover.svg)
+![한온시스템(018880) 주식분석 커버 이미지 - 현재가 3,305원, 유상증자 발행가 2,830원, 목표주가 컨센서스 4,200~4,700원](/images/hanon-systems-stock/hanon-systems-cover.png)
 
 자동차 부품주 중에서도 최근 유상증자와 최대주주 교체 이슈로 뜨거웠던 종목, **한온시스템(018880)**을 분석해 보려고 합니다. 다만 지금은 개별 종목 이슈만 볼 때가 아니죠. **코스피 자체가 9,000선 고점 이후 롤러코스터 장세**를 겪고 있는 만큼, 시장 전체 분위기와 함께 한온시스템의 현재 위치, 그리고 앞으로의 두 가지 시나리오까지 차트로 정리해 봤습니다.
 
@@ -159,7 +159,7 @@ const samplePosts: Post[] = [
 
 한온시스템 얘기를 하기 전에, 지금 코스피가 어떤 상태인지부터 짚고 가야 합니다. 개별 종목의 주가도 결국 이 흐름 위에서 움직이고 있으니까요.
 
-![2026년 코스피 지수 흐름 차트 - 9,000선 고점 이후 패닉셀로 6,000선 붕괴, 이후 급등락을 반복하며 8월 6일 현재 6,600선에서 공방 중](/images/hanon-systems-stock/kospi-trend-2026.svg)
+![2026년 코스피 지수 흐름 차트 - 9,000선 고점 이후 패닉셀로 6,000선 붕괴, 이후 급등락을 반복하며 8월 6일 현재 6,600선에서 공방 중](/images/hanon-systems-stock/kospi-trend-2026.png)
 
 - **6월 중순**: 코스피 **9,000선 돌파**, 연중 최고치 경신
 - **7월**: AI 투자 기대 약화, 중국의 반도체 굴기, 단일종목 레버리지 ETF발 수급 왜곡이 겹치며 **한 달 만에 6,000선까지 붕괴** (월간 등락률 -22.19%, 전 세계 주요국 증시 중 최대 낙폭). 7월 28~29일에는 코스피·코스닥 모두 매도 사이드카·서킷브레이커가 이틀 연속 발동
@@ -188,7 +188,7 @@ const samplePosts: Post[] = [
 
 ## 3. 주가는 지금 어디에 와 있나: 유상증자 발행가 근처로 되밀린 흐름
 
-![한온시스템 주가 흐름 차트 - 2025년 12월 유상증자 발행가 2,830원, 2026년 6월 중순 코스피 랠리와 함께 급등했다가 7월 코스피 폭락에 동조해 3,265~3,305원까지 되밀린 흐름과 향후 목표주가 밴드 4,200~4,700원 시나리오](/images/hanon-systems-stock/hanon-price-target.svg)
+![한온시스템 주가 흐름 차트 - 2025년 12월 유상증자 발행가 2,830원, 2026년 6월 중순 코스피 랠리와 함께 급등했다가 7월 코스피 폭락에 동조해 3,265~3,305원까지 되밀린 흐름과 향후 목표주가 밴드 4,200~4,700원 시나리오](/images/hanon-systems-stock/hanon-price-target.png)
 
 - **2025년 12월**: 약 9,834억 원 규모 유상증자, 최종 발행가액 **주당 2,830원** 확정. 최대주주 한국타이어앤테크놀로지(지분율 54.77%)가 배정 물량 100% 청약 참여
 - **2026년 6월 중순**: 코스피가 9,000선을 뚫는 랠리에 동반해 한온시스템 주가도 큰 폭으로 상승(추정)

@@ -3,6 +3,22 @@ import { Category, Post } from '../types';
 import { FileText, Copy, Check, Plus, Tag, Calendar, Folder, ExternalLink, Sparkles, Code, Edit3, Trash2, Download, Film } from 'lucide-react';
 import { marked } from 'marked';
 
+// marked's default GFM 'del' rule matches a SINGLE '~' as a valid strikethrough
+// delimiter, not just '~~'. Korean posts routinely use a single '~' as a range
+// dash (e.g. "몇만 원~몇십만 원", "20~25배 ... 0.90~0.95배") — with two such
+// ranges in the same paragraph, marked reads the first '~' as an opening
+// delimiter and the next as the closing one, striking through everything in
+// between. We never intentionally use strikethrough in these posts, so just
+// turn the rule off (return undefined = "no match", letting the '~' fall
+// through as plain text) instead of asking writers to escape every dash.
+marked.use({
+  tokenizer: {
+    del() {
+      return undefined;
+    },
+  },
+});
+
 interface PostManagerProps {
   initialPosts: Post[];
 }
