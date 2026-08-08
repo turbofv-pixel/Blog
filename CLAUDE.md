@@ -26,6 +26,15 @@ To convert: render the SVG with Playwright's Chromium at its native `viewBox` si
 `deviceScaleFactor` for crispness) and screenshot it — see git history around the
 `stock-investing-beginner` and `hanon-systems-stock` image sets for the exact pattern.
 
+## Stock posts: no ticker numbers
+
+Don't include the numeric ticker/종목코드 (e.g. `086520`, `018880`, `247540`) anywhere in a
+stock-analysis post — not in the title, headings, body prose, hashtags, or the cover image
+artwork. Refer to companies by name only (`에코프로`, `에코프로비엠`, `한온시스템`, ...). This
+applies to the `.md` file, the matching `src/App.tsx` entry, and any generated cover image —
+tickers have shown up baked into cover-image PNGs before (as rendered text, not just alt
+text), so check the image itself, not just the Markdown, when auditing a post.
+
 ## Markdown gotcha: single `~` triggers strikethrough
 
 `marked`'s default GFM `del` rule matches **one or more** `~` as a valid strikethrough
