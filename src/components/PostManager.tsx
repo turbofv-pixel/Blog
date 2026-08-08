@@ -411,6 +411,29 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
           </div>
         </div>
 
+        {/* Naver app vs web caveat: the copy itself succeeds either way (rich HTML is on the
+            clipboard), but Naver's native mobile APP editor only reads the plain-text half of
+            the clipboard and drops all formatting - the web editor (mobile browser or PC) reads
+            the HTML correctly. There's no way to detect which one the paste will land in from
+            here, so this has to be a permanent reminder rather than a conditional warning. */}
+        <div style={{
+          display: 'flex',
+          alignItems: 'flex-start',
+          gap: '8px',
+          fontSize: '0.8rem',
+          color: 'var(--text-muted)',
+          background: 'rgba(255,255,255,0.03)',
+          border: '1px solid var(--border-color)',
+          borderRadius: '8px',
+          padding: '8px 12px'
+        }}>
+          <ShieldAlert size={15} style={{ flexShrink: 0, marginTop: '1px', color: '#facc15' }} />
+          <span>
+            <strong>네이버 블로그 '앱'에는 서식이 안 붙어요.</strong> 앱 붙여넣기는 텍스트만 받아들이는 구조라, 아무리 복사가 잘 돼도 앱에서 붙여넣으면 서식이 사라져요.
+            모바일 브라우저나 PC로 <strong>네이버 블로그 웹사이트</strong>에 접속해서 붙여넣어 주세요.
+          </span>
+        </div>
+
         {/* Copy Notification Banner */}
         {copiedStatus === 'rich' && (
           <div className="animate-fade-in" style={{
