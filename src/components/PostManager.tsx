@@ -143,6 +143,25 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     setCopiedStatus(false);
   };
 
+  // marked emits a bare <table>/<th>/<td> with no borders at all, relying on an external
+  // stylesheet to draw the grid. Naver's paste sanitizer (like most rich-text paste handlers)
+  // strips <style> tags and CSS classes, keeping only inline `style` attributes - so without
+  // this the table survives structurally but shows up with no visible lines at all, which is
+  // what actually got reported (not a formatting/bold issue, a "can't tell where cells are"
+  // issue). Inline the border/padding directly onto every table/th/td so it stays visible
+  // wherever the HTML lands.
+  const styleTables = (container: HTMLElement) => {
+    container.querySelectorAll('table').forEach((table) => {
+      table.setAttribute('style', 'border-collapse: collapse; width: 100%; margin: 16px 0;');
+      table.querySelectorAll('th, td').forEach((cell) => {
+        cell.setAttribute('style', 'border: 1px solid #c7ccd1; padding: 10px 14px; text-align: left; vertical-align: top;');
+      });
+      table.querySelectorAll('th').forEach((th) => {
+        th.setAttribute('style', th.getAttribute('style') + ' background: #f2f5f3; font-weight: 700;');
+      });
+    });
+  };
+
   // Convert Markdown to Naver SmartEditor ONE formatted HTML (used for on-screen preview).
   // Post content references media with root-absolute paths like "/images/x.jpg", which the
   // browser resolves against the domain root — wrong once the app is served under a base path
@@ -158,6 +177,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
         const src = el.getAttribute('src');
         if (src) el.setAttribute('src', toAbsoluteUrl(src));
       });
+      styleTables(container);
       // Wrap with Naver SmartEditor inline styles
       return `
         <div style="font-family: 'Maru Buri', 'Nanum Gothic', sans-serif; color: #222222; font-size: 16px; line-height: 1.8;">
@@ -180,6 +200,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     const rawHtml = marked.parse(markdownText) as string;
     const container = document.createElement('div');
     container.innerHTML = rawHtml;
+    styleTables(container);
 
     const replaceWithNotice = (el: Element, kind: string, src: string) => {
       const fileName = src.split('/').pop() || kind;
