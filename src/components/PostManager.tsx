@@ -411,11 +411,14 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
           </div>
         </div>
 
-        {/* Naver app vs web caveat: the copy itself succeeds either way (rich HTML is on the
+        {/* Naver app paste caveat: the copy itself succeeds either way (rich HTML is on the
             clipboard), but Naver's native mobile APP editor only reads the plain-text half of
-            the clipboard and drops all formatting - the web editor (mobile browser or PC) reads
-            the HTML correctly. There's no way to detect which one the paste will land in from
-            here, so this has to be a permanent reminder rather than a conditional warning. */}
+            the clipboard and drops all formatting when pasting directly into it. Mobile web
+            can't write/publish posts at all (app-only), so "just use the web version" isn't a
+            real option on phone - the actual working path a user confirmed is: paste on PC web
+            (where the HTML clipboard is read correctly), save as a draft (임시저장) there, then
+            *load* that draft from the mobile app (불러오기) rather than pasting into the app -
+            loading an existing draft preserves its formatting, only a fresh in-app paste doesn't. */}
         <div style={{
           display: 'flex',
           alignItems: 'flex-start',
@@ -429,8 +432,8 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
         }}>
           <ShieldAlert size={15} style={{ flexShrink: 0, marginTop: '1px', color: '#facc15' }} />
           <span>
-            <strong>네이버 블로그 '앱'에는 서식이 안 붙어요.</strong> 앱 붙여넣기는 텍스트만 받아들이는 구조라, 아무리 복사가 잘 돼도 앱에서 붙여넣으면 서식이 사라져요.
-            모바일 브라우저나 PC로 <strong>네이버 블로그 웹사이트</strong>에 접속해서 붙여넣어 주세요.
+            <strong>네이버 앱에 직접 붙여넣으면 서식이 사라져요.</strong> 앱은 모바일에서 글쓰기가 가능한 유일한 방법이지만, 붙여넣기는 텍스트만 받아들이는 구조예요.
+            대신 <strong>① PC 웹에서 이 내용을 붙여넣고 임시저장 → ② 모바일 앱에서 그 임시글을 '불러오기'</strong>로 열면 서식이 그대로 유지돼요.
           </span>
         </div>
 
