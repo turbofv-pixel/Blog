@@ -1,6 +1,6 @@
 import React, { useState, useMemo } from 'react';
 import { Category, Post } from '../types';
-import { FileText, Copy, Check, Plus, Tag, Calendar, Folder, ExternalLink, Sparkles, Code, Edit3, Trash2, Download, Film } from 'lucide-react';
+import { FileText, Copy, Check, Plus, Tag, Calendar, Folder, ExternalLink, Sparkles, Code, Edit3, Trash2, Download, Film, ShieldAlert } from 'lucide-react';
 import { marked } from 'marked';
 
 // marked's default GFM 'del' rule matches a SINGLE '~' as a valid strikethrough
@@ -27,7 +27,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   const [posts, setPosts] = useState<Post[]>(initialPosts);
   const [selectedCategory, setSelectedCategory] = useState<Category>('전체');
   const [selectedPost, setSelectedPost] = useState<Post>(initialPosts[0]);
-  const [copiedStatus, setCopiedStatus] = useState<boolean>(false);
+  const [copiedStatus, setCopiedStatus] = useState<false | 'rich' | 'plain'>(false);
   const [copiedImageSrc, setCopiedImageSrc] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedContent, setEditedContent] = useState<string>(initialPosts[0]?.content || '');
@@ -217,14 +217,19 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
       });
 
       await navigator.clipboard.write([clipboardItem]);
-      setCopiedStatus(true);
+      setCopiedStatus('rich');
       setTimeout(() => setCopiedStatus(false), 3000);
     } catch (err) {
-      // Fallback for browsers
+      // Rich-copy failed (some mobile browsers/in-app webviews don't support writing a
+      // multi-MIME ClipboardItem, e.g. text/html alongside text/plain, and throw here).
+      // Falling back to plain text is still useful, but it must NOT look like the same
+      // success as the rich copy - pasting raw markdown ("**글자**", "# 제목") without any
+      // warning is exactly what confused a user into thinking the feature was broken.
+      console.error('Naver 서식 복사 실패, 일반 텍스트로 대체합니다:', err);
       try {
         await navigator.clipboard.writeText(editedContent);
-        setCopiedStatus(true);
-        setTimeout(() => setCopiedStatus(false), 3000);
+        setCopiedStatus('plain');
+        setTimeout(() => setCopiedStatus(false), 4500);
       } catch (fallbackErr) {
         alert('복사에 실패했습니다. 아래 텍스트를 직접 복사해 주세요.');
       }
@@ -397,13 +402,17 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
               className="btn-naver"
             >
               {copiedStatus ? <Check size={18} /> : <Copy size={18} />}
-              {copiedStatus ? '복사 완료! (네이버에 붙여넣으세요)' : '네이버 스마트에디터용 복사 (Ctrl+V)'}
+              {copiedStatus === 'plain'
+                ? '서식 없이 복사됨 (아래 확인!)'
+                : copiedStatus === 'rich'
+                ? '복사 완료! (네이버에 붙여넣으세요)'
+                : '네이버 스마트에디터용 복사 (Ctrl+V)'}
             </button>
           </div>
         </div>
 
         {/* Copy Notification Banner */}
-        {copiedStatus && (
+        {copiedStatus === 'rich' && (
           <div className="animate-fade-in" style={{
             background: 'rgba(3, 199, 90, 0.15)',
             border: '1px solid #03C75A',
@@ -418,6 +427,24 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
           }}>
             <Sparkles size={18} />
             클립보드에 복사되었습니다! 네이버 블로그 글쓰기 창에서 [Ctrl + V]를 눌러 붙여넣으세요. (네이버 URL이 등록된 사진은 그 자리에 그대로 포함됩니다. 미등록 사진은 안내 문구로, 동영상은 다운로드해 직접 올려주세요)
+          </div>
+        )}
+
+        {copiedStatus === 'plain' && (
+          <div className="animate-fade-in" style={{
+            background: 'rgba(248, 113, 113, 0.15)',
+            border: '1px solid #f87171',
+            color: '#f87171',
+            padding: '12px 18px',
+            borderRadius: '10px',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '10px',
+            fontWeight: 600,
+            fontSize: '0.9rem'
+          }}>
+            <ShieldAlert size={18} />
+            이 브라우저에서는 서식 있는 복사가 지원되지 않아 마크다운 원본 텍스트만 복사됐어요. 네이버에 붙여넣으면 <code>**굵게**</code>, <code>#제목</code> 같은 기호가 그대로 보일 거예요. PC 브라우저(Chrome 등)에서 다시 시도해 보시거나, 아래 미리보기 화면 내용을 직접 보고 옮겨 적어 주세요.
           </div>
         )}
 
