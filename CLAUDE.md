@@ -26,6 +26,27 @@ To convert: render the SVG with Playwright's Chromium at its native `viewBox` si
 `deviceScaleFactor` for crispness) and screenshot it — see git history around the
 `stock-investing-beginner` and `hanon-systems-stock` image sets for the exact pattern.
 
+## Cover images: square-safe, not wide banners
+
+**Naver Blog picks the first image in a post as the mobile list thumbnail, and always crops
+it to 1:1 (PC list view crops to 3:2 instead).** A wide banner cover (we used to ship
+2400×760, ~3.16:1) survives PC's 3:2 crop fine but loses roughly a third off each side under
+mobile's 1:1 crop — which is exactly where a banner layout puts the company name and the
+date badge, so the title reads as cut off on phones ("사진이 짤린다").
+
+Build the cover (the *first* image referenced in the post, right after the `# ` H1) as a
+**square canvas, 1080×1080 native (2160×2160 at the usual 2x render)**, and keep every
+piece of text/data inside a **safe zone of roughly y=190 to y=890** (the middle ~65%). That
+band is what survives PC's 3:2 crop from a 1:1 source; the full square already survives
+mobile's 1:1 crop with nothing lost. Horizontal placement doesn't need special treatment —
+neither crop touches the width. A decorative top accent bar or the small disclaimer line can
+sit outside the safe band since losing them costs nothing; the company name, headline, and
+stat cards must not.
+
+This only applies to the **cover image** (the thumbnail source). Any other in-body chart or
+diagram (price trend, value-chain diagram, etc.) can stay a normal wide/landscape shape —
+those never get thumbnail-cropped.
+
 ## Stock posts: no ticker numbers
 
 Don't include the numeric ticker/종목코드 (e.g. `086520`, `018880`, `247540`) anywhere in a
