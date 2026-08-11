@@ -33,3 +33,7 @@ temp_uploads/
 
 # Naver login session for the publish automation (contains auth cookies)
 .naver-session/
+
+# Python
+__pycache__/
+*.pyc
