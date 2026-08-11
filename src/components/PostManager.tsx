@@ -517,6 +517,22 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
               네이버 URL이 등록된 사진은 복사 시 자동으로 포함됩니다. 아직 없다면 "사진 복사"로 네이버에 한 번 올린 뒤, 그 주소를 아래에 등록해 주세요.
             </div>
 
+            {mediaSources.some((m) => m.isVideo) && (
+              <div style={{ fontSize: '0.8rem', color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
+                <Film size={14} />
+                동영상 용량이 크면(25MB↑) 업로드 전에{' '}
+                <a
+                  href="https://www.freeconvert.com/video-compressor"
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{ color: '#03C75A', fontWeight: 600 }}
+                >
+                  FreeConvert 동영상 압축
+                </a>
+                에서 목표 용량(Target size)을 20MB 정도로 맞춰 압축한 뒤 올려주세요.
+              </div>
+            )}
+
             {imageSrcsInOrder.length > 0 && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
                 <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)' }}>
