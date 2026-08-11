@@ -219,3 +219,16 @@ body {
   border-radius: 10px;
   box-shadow: 0 4px 14px rgba(0,0,0,0.12);
 }
+
+/* 모자이크 스튜디오: 데스크톱에서는 미리보기 + 사이드 패널 2단, 모바일에서는 1단으로 쌓는다 */
+.mosaic-grid {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 24px;
+}
+
+@media (max-width: 768px) {
+  .mosaic-grid {
+    grid-template-columns: 1fr;
+  }
+}
