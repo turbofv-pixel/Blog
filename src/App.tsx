@@ -1332,21 +1332,23 @@ spec:
 - **그물망 스크린 컨트롤러 게임**: 입구 쪽에 있는 체험 게임이에요. 엄마와 아이가 나란히 앉아 컨트롤러로 네온빛 타깃을 맞히며 몸을 움직이는 코너였어요.
 - **배터리·CO2 터치스크린 체험**: 전기차 배터리가 충전되고 방전되는 과정을 손가락으로 아이콘을 눌러가며 배우는 대형 터치스크린 게임이에요. 탄소중립이라는 개념을 자동차와 연결해 직관적으로 보여줘요.
 
-![전기차 배터리 원리를 배우는 터치스크린 체험](/images/ansan-energy-center/battery-touchscreen.jpg)
-
 <video controls src="/videos/energy-center-battery-game.mp4"></video>
 
 - **풍력·수력 발전 체험**: 투명한 관 속에서 물이 도는 모습을 보며 커다란 손잡이를 직접 돌려보는 체험이에요. 물의 힘이 전기로 바뀌는 원리를 몸으로 느껴볼 수 있었어요.
 
-![투명한 관 속 물의 흐름을 보며 손잡이를 돌려보는 수력 발전 체험](/images/ansan-energy-center/turbine-tube.jpg)
+<video controls src="/videos/energy-center-turbine-tube.mp4"></video>
 
 - **에너지 절약 캐릭터 존**: 해, 구름, 물방울을 의인화한 귀여운 캐릭터들이 벽면 가득 붙어 있고, 그 앞에 미니 놀이 구조물이 있어 아이가 폴짝폴짝 뛰어다니며 놀기 좋았어요.
 
-![에너지 절약 캐릭터 벽면과 미니 놀이 구조물](/images/ansan-energy-center/energy-character-wall.jpg)
+<video controls src="/videos/energy-center-character-wall.mp4"></video>
+
+- **바이오가스 화장실 체험존**: 변기 모형 미끄럼틀을 따라 공이 내려가며 우리가 사용한 물이 정화되는 과정을 재미있게 보여주는 코너예요. 처음 만난 또래 친구와 나란히 앉아 함께 놀기도 했어요.
+
+<video controls src="/videos/biogas-toilet-exhibit.mp4"></video>
 
 - **드라이빙 체험존**: 미니 전동차 핸들을 잡고 화면 속 도로를 달리며 신호등과 표지판을 하나씩 배우는 체험이에요. 아이가 가장 오래 머무른 코너이기도 했어요.
 
-![미니 전동차를 운전하며 도로 표지판을 배우는 드라이빙 체험](/images/ansan-energy-center/driving-game.jpg)
+<video controls src="/videos/energy-center-driving-game.mp4"></video>
 
 한참 뛰어놀다 지쳤을 즈음엔 우드톤 라운지의 커다란 빈백 소파에 파묻혀 잠시 숨을 돌리기도 했어요.
 
@@ -1390,6 +1392,8 @@ spec:
 
 ![위인 전시존을 관람하는 아이와 엄마](/images/ansan-industrial-history/pioneer-wall-view.jpg)
 
+<video controls src="/videos/pioneer-wall-view.mp4"></video>
+
 > 💡 아이에게는 다소 어려운 내용일 수 있지만, "이 아저씨는 무슨 일을 했을까?" 하고 하나씩 질문을 던지며 함께 관람하니 생각보다 흥미로워하며 따라오더라고요.
 
 전시존을 둘러본 다음에는 이번 나들이의 하이라이트, **4D 상영관** 체험이 이어졌어요.
@@ -1410,7 +1414,7 @@ spec:
 
 | 시간대 | 장소 | 체험 내용 |
 | --- | --- | --- |
-| 오전 | 안산플러스에너지센터 | 그물망 컨트롤러 게임, 배터리·수력 체험, 드라이빙 체험, 드론 비행 |
+| 오전 | 안산플러스에너지센터 | 그물망 컨트롤러 게임, 배터리·수력 체험, 바이오가스 화장실 체험, 드라이빙 체험, 드론 비행 |
 | 점심 | 코코이찌방야 안산롯데백화점점 | 카레 우동, 카레라이스+돈카츠, 치킨/감자튀김 |
 | 오후 | 안산산업역사박물관 | 위인 전시존, 4D 영상관 |
 
