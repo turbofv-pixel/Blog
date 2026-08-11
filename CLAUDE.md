@@ -56,6 +56,38 @@ applies to the `.md` file, the matching `src/App.tsx` entry, and any generated c
 tickers have shown up baked into cover-image PNGs before (as rendered text, not just alt
 text), so check the image itself, not just the Markdown, when auditing a post.
 
+## Parenting posts: bunny stickers, not mosaic, over every face
+
+Photos and videos for the 육아(parenting) posts always ship with every visible face covered
+by the cute bunny-face sticker (drawn with PIL — see the `make_bunny_sticker()` /
+`detect_faces_bgr()` helpers used in git history around the `siheung-breathing-playground`
+and `yongin-suji-eco-park` posts), never plain pixelation/mosaic blur. This covers **every**
+person visible, not just our own family — other kids, parents, staff caught in the
+background all get a sticker too. Detection uses OpenCV's `FaceDetectorYN` (YuNet ONNX
+model); tune the score threshold and box-size sanity bounds per scene (a screen full of
+animated/cartoon content nearby needs a stricter threshold to avoid false-positive stickers
+on the screen itself; a close-up shot needs a looser max-size bound so a real close face
+isn't rejected as "too big"). Always QA the result frame-by-frame (contact sheets sampled at
+a few fps, not just spot checks) before shipping — a missed frame is a real privacy leak,
+and a detector mis-tuned too aggressively floods the frame with false-positive stickers.
+
+Mosaic/pixelation blur (as used in some older posts, e.g. `ansan-energy-industrial-history-trip`)
+is being phased out in favor of this sticker treatment — when a post's media gets
+re-processed or re-uploaded, redo it as bunny stickers instead of carrying the mosaic
+forward.
+
+## Parenting post videos: silent by default
+
+All video attached to a 육아(parenting) post ships **without audible sound** — voices are
+personally identifiable and the videos are usually of a public place with other families
+around. Don't just strip the audio stream entirely (`-an`), though: Naver's blog video
+uploader appears to outright reject a video file that has zero audio streams at all. Instead
+mux in a silent audio track (e.g. `ffmpeg -i in.mp4 -f lavfi -i
+anullsrc=channel_layout=stereo:sample_rate=44100 -c:v copy -c:a aac -b:a 64k -shortest
+out.mp4`) so the file is a structurally normal video+audio mp4 (~-90dB, effectively
+inaudible) — see git history around the `siheung-breathing-playground` post for the exact
+fix and the failure it was solving.
+
 ## Markdown gotcha: single `~` triggers strikethrough
 
 `marked`'s default GFM `del` rule matches **one or more** `~` as a valid strikethrough
