@@ -15,6 +15,13 @@ to Naver's SmartEditor. Two things matter for "does my change actually show up":
 - GitHub Pages only redeploys on push to `master` (or a manual `workflow_dispatch` run of
   `.github/workflows/deploy.yml`) — not on a feature branch or PR.
 
+## Every post opens with the "대왕토끼" greeting
+
+Every post, in every category (육아, 주식, IT, ...) — not just parenting — opens right after
+the `# ` H1 with a greeting line like "안녕하세요 대왕토끼입니다~ 🐰" before getting into the
+content. Applies to new posts going forward; existing posts don't need to be retrofitted
+unless asked.
+
 ## Post images: PNG, not SVG
 
 When generating illustrative images/diagrams for a blog post (charts, infographics, step
