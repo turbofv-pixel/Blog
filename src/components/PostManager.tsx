@@ -49,13 +49,18 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   // Photo and video files referenced in the current post, for manual download/copy. Naver's
   // editor doesn't reliably accept pasted <img>/<video> HTML tags (external URLs get dropped,
   // data URIs get stripped) but a real image dropped on the clipboard (the same way "우클릭
-  // > 이미지 복사" works on any webpage) pastes in fine — see copyImageToClipboard below
+  // > 이미지 복사" works on any webpage) pastes in fine — see copyImageToClipboard below.
+  //
+  // Pulled out with regex on the raw HTML string rather than parsing it into a real (if
+  // detached) <img>/<video> element: setting .innerHTML on any element — attached to the
+  // document or not — makes the browser start fetching each img/video's src immediately, and
+  // since these still carry the original root-absolute "/images/..." path at this point (not
+  // yet resolved against the app's base path), every one of them 404s. Regex matching never
+  // touches the browser's resource loader, so nothing gets fetched just to build this list.
   const mediaSources = useMemo(() => {
     const rawHtml = marked.parse(editedContent) as string;
-    const container = document.createElement('div');
-    container.innerHTML = rawHtml;
-    const images = Array.from(container.querySelectorAll('img')).map((img) => ({ src: img.getAttribute('src') || '', isVideo: false }));
-    const videos = Array.from(container.querySelectorAll('video')).map((video) => ({ src: video.getAttribute('src') || '', isVideo: true }));
+    const images = Array.from(rawHtml.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)).map((m) => ({ src: m[1], isVideo: false }));
+    const videos = Array.from(rawHtml.matchAll(/<video\b[^>]*\bsrc="([^"]+)"/g)).map((m) => ({ src: m[1], isVideo: true }));
     const seen = new Set<string>();
     return [...images, ...videos].filter((m) => m.src && !seen.has(m.src) && seen.add(m.src));
   }, [editedContent]);
@@ -166,17 +171,21 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   // Post content references media with root-absolute paths like "/images/x.jpg", which the
   // browser resolves against the domain root — wrong once the app is served under a base path
   // (e.g. GitHub Pages project sites at "/Blog/"). Rewrite every img/video src through
-  // toAbsoluteUrl so the preview (and the live site, which renders through this same path)
-  // actually loads the file instead of 404ing.
+  // toAbsoluteUrl BEFORE the HTML string ever becomes real DOM elements — rewriting the
+  // attribute afterward (via querySelectorAll on an already-populated container) still works,
+  // but by then the browser has already fired off one doomed fetch for the raw "/images/..."
+  // src the instant `container.innerHTML` was assigned (img/video start loading as soon as src
+  // is set, even while detached from the document), so the network tab fills up with 404s that
+  // never affected what's shown. String-level rewrite first means only the correct URL is ever
+  // requested.
   const getNaverFormattedHtml = (markdownText: string) => {
     try {
-      const rawHtml = marked.parse(markdownText) as string;
+      const rawHtml = (marked.parse(markdownText) as string).replace(
+        /(<(?:img|video)\b[^>]*\bsrc=")([^"]+)(")/g,
+        (_match, pre, src, post) => `${pre}${toAbsoluteUrl(src)}${post}`
+      );
       const container = document.createElement('div');
       container.innerHTML = rawHtml;
-      container.querySelectorAll('img, video').forEach((el) => {
-        const src = el.getAttribute('src');
-        if (src) el.setAttribute('src', toAbsoluteUrl(src));
-      });
       styleTables(container);
       // Wrap with Naver SmartEditor inline styles
       return `
