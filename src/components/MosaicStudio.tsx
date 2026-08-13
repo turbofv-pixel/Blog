@@ -40,6 +40,17 @@ interface ImageItem {
   status: 'pending' | 'detecting' | 'done' | 'error';
 }
 
+interface VideoItem {
+  id: string;
+  file: File;
+  objectUrl: string;
+  status: 'pending' | 'processing' | 'done' | 'error';
+  progress: number;
+  resultUrl: string | null;
+  resultExt: string;
+  faceRatio: number | null;
+}
+
 // GitHub Pages 배포 시 base가 '/Blog/' 이므로, 정적 자산은 항상 BASE_URL을 기준으로 찾는다
 // (마크다운 본문에 박힌 "/videos/..." 같은 루트 절대경로와는 별개 — 그건 로컬 파일 조회용 규약이라
 // 그대로 두고, 여기 새로 추가하는 자산만 배포 경로에 맞게 정확히 참조한다).
@@ -203,11 +214,9 @@ export const MosaicStudio: React.FC = () => {
   const [manualAddActive, setManualAddActive] = useState<boolean>(false);
   const [manualSizePct, setManualSizePct] = useState<number>(16); // 이미지 짧은 변 대비 %
 
-  // --- 영상(단일 파일) 상태 ---
-  const [videoSrc, setVideoSrc] = useState<string | null>(null);
-  const [videoResultUrl, setVideoResultUrl] = useState<string | null>(null);
-  const [videoResultExt, setVideoResultExt] = useState<string>('webm');
-  const [videoProgress, setVideoProgress] = useState<number>(0);
+  // --- 영상(여러 개 가능, 순서대로 하나씩 처리) 상태 ---
+  const [videoItems, setVideoItems] = useState<VideoItem[]>([]);
+  const [activeVideoIndex, setActiveVideoIndex] = useState<number>(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoElRef = useRef<HTMLVideoElement | null>(null);
@@ -225,6 +234,7 @@ export const MosaicStudio: React.FC = () => {
   }, []);
 
   const activeImage = mediaKind === 'image' ? images[activeImageIndex] : undefined;
+  const activeVideoItem = mediaKind === 'video' ? videoItems[activeVideoIndex] : undefined;
 
   // 활성 사진의 큰 캔버스를 얼굴/모드/픽셀크기 바뀔 때마다 다시 그린다
   useEffect(() => {
@@ -239,25 +249,42 @@ export const MosaicStudio: React.FC = () => {
     const videoFiles = files.filter((f) => f.type.startsWith('video/'));
     const imageFiles = files.filter((f) => f.type.startsWith('image/'));
 
-    setVideoResultUrl(null);
     setManualAddActive(false);
 
     if (imageFiles.length > 0) {
       startImageBatch(imageFiles, videoFiles.length > 0);
     } else if (videoFiles.length > 0) {
-      setMediaKind('video');
-      setImages([]);
-      const url = URL.createObjectURL(videoFiles[0]);
-      setVideoSrc(url);
-      setStatusMessage('영상을 불러왔습니다. 아래 "토끼 모자이크 시작" 버튼을 눌러주세요.');
+      startVideoBatch(videoFiles);
     }
     // 같은 파일을 다시 선택해도 onChange가 또 뜨도록 입력값 초기화
     e.target.value = '';
   };
 
+  const startVideoBatch = (files: File[]) => {
+    setMediaKind('video');
+    setImages([]);
+    const items: VideoItem[] = files.map((f) => ({
+      id: uid(),
+      file: f,
+      objectUrl: URL.createObjectURL(f),
+      status: 'pending',
+      progress: 0,
+      resultUrl: null,
+      resultExt: 'webm',
+      faceRatio: null,
+    }));
+    setVideoItems(items);
+    setActiveVideoIndex(0);
+    setStatusMessage(
+      items.length > 1
+        ? `영상 ${items.length}개를 불러왔습니다. "전체 영상 모자이크 시작"을 누르면 순서대로 처리돼요.`
+        : '영상을 불러왔습니다. 아래 "토끼 모자이크 시작" 버튼을 눌러주세요.'
+    );
+  };
+
   const startImageBatch = async (files: File[], skippedVideos: boolean) => {
     setMediaKind('image');
-    setVideoSrc(null);
+    setVideoItems([]);
     const items: ImageItem[] = files.map((f) => ({
       id: uid(),
       file: f,
@@ -367,15 +394,10 @@ export const MosaicStudio: React.FC = () => {
     return '';
   };
 
-  const processVideo = async () => {
-    const video = videoElRef.current;
-    const canvas = canvasRef.current;
-    const bunny = bunnyRef.current;
-    if (!video || !canvas || !videoSrc) return;
-
+  // 영상 큐를 순서대로 하나씩 처리한다 (동시에 여러 개를 녹화하면 캔버스/레코더를 공유할 수
+  // 없으니 반드시 순차 처리 — 대신 다음 영상으로 자동으로 넘어가서 한 번의 "시작"으로 전부 끝남).
+  const processVideoQueue = async () => {
     setIsProcessing(true);
-    setVideoResultUrl(null);
-    setVideoProgress(0);
     cancelRef.current = false;
     setStatusMessage('얼굴 인식 모델을 준비하는 중입니다...');
 
@@ -387,27 +409,56 @@ export const MosaicStudio: React.FC = () => {
       return;
     }
 
+    for (let i = 0; i < videoItems.length; i++) {
+      if (cancelRef.current) break;
+      const item = videoItems[i];
+      if (item.status === 'done') continue;
+      setActiveVideoIndex(i);
+      setStatusMessage(
+        videoItems.length > 1
+          ? `영상 처리 중 (${i + 1}/${videoItems.length})... 영상 길이만큼 시간이 걸려요.`
+          : '영상을 처리하는 중입니다... (영상 길이만큼 시간이 걸려요)'
+      );
+      // eslint-disable-next-line no-await-in-loop
+      await processOneVideo(item.id, item.objectUrl);
+    }
+
+    setIsProcessing(false);
+    setStatusMessage(
+      cancelRef.current
+        ? '처리를 중단했어요.'
+        : videoItems.length > 1
+          ? '✨ 영상 처리 완료! 개별 또는 전체 다운로드하세요.'
+          : '✨ 처리 완료!'
+    );
+  };
+
+  const processOneVideo = async (id: string, objectUrl: string) => {
+    const video = videoElRef.current;
+    const canvas = canvasRef.current;
+    const bunny = bunnyRef.current;
+    if (!video || !canvas) return;
+
+    setVideoItems((prev) => prev.map((it) => (it.id === id ? { ...it, status: 'processing', progress: 0 } : it)));
+
+    video.src = objectUrl;
+    video.load();
     await new Promise<void>((resolve) => {
-      if (video.readyState >= 1) resolve();
-      else video.onloadedmetadata = () => resolve();
+      video.onloadedmetadata = () => resolve();
     });
 
     canvas.width = video.videoWidth;
     canvas.height = video.videoHeight;
     const ctx = canvas.getContext('2d');
-    if (!ctx) {
-      setIsProcessing(false);
-      return;
-    }
+    if (!ctx) return;
 
     const mimeType = pickSupportedMimeType();
     if (!mimeType) {
+      setVideoItems((prev) => prev.map((it) => (it.id === id ? { ...it, status: 'error' } : it)));
       setStatusMessage('❌ 이 브라우저는 영상 녹화(MediaRecorder)를 지원하지 않습니다.');
-      setIsProcessing(false);
       return;
     }
     const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
-    setVideoResultExt(ext);
 
     // 오디오 트랙을 아예 추가하지 않으므로 결과 영상은 자동으로 무음이다.
     const stream = (canvas as any).captureStream(30) as MediaStream;
@@ -425,7 +476,6 @@ export const MosaicStudio: React.FC = () => {
     let framesWithFace = 0;
     let framesTotal = 0;
 
-    setStatusMessage('영상을 처리하는 중입니다... (영상 길이만큼 시간이 걸려요)');
     video.currentTime = 0;
     video.muted = true;
     recorder.start();
@@ -489,7 +539,8 @@ export const MosaicStudio: React.FC = () => {
           }
         });
 
-        setVideoProgress(video.duration ? video.currentTime / video.duration : 0);
+        const progress = video.duration ? video.currentTime / video.duration : 0;
+        setVideoItems((prev) => prev.map((it) => (it.id === id ? { ...it, progress } : it)));
         requestAnimationFrame(() => {
           step();
         });
@@ -503,13 +554,11 @@ export const MosaicStudio: React.FC = () => {
 
     const blob = new Blob(chunks, { type: mimeType });
     const url = URL.createObjectURL(blob);
-    setVideoResultUrl(url);
-    setIsProcessing(false);
     const ratio = framesTotal ? framesWithFace / framesTotal : 0;
-    setStatusMessage(
-      ratio > 0.5
-        ? `✨ 처리 완료! (얼굴 인식된 구간 ${(ratio * 100).toFixed(0)}%) · 무음 처리됨`
-        : `⚠️ 처리는 됐지만 얼굴 인식 비율이 낮아요(${(ratio * 100).toFixed(0)}%). 아래 미리보기로 확인해보세요.`
+    setVideoItems((prev) =>
+      prev.map((it) =>
+        it.id === id ? { ...it, status: 'done', resultUrl: url, resultExt: ext, faceRatio: ratio, progress: 1 } : it
+      )
     );
   };
 
@@ -541,27 +590,53 @@ export const MosaicStudio: React.FC = () => {
     });
   };
 
-  const handleDownloadVideo = () => {
-    if (!videoResultUrl) return;
+  const handleDownloadVideo = (item: VideoItem) => {
+    if (!item.resultUrl) return;
     const link = document.createElement('a');
-    link.download = `rabbit_mosaic_${Date.now()}.${videoResultExt}`;
-    link.href = videoResultUrl;
+    link.download = `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.${item.resultExt}`;
+    link.href = item.resultUrl;
     link.click();
+  };
+
+  const handleDownloadAllVideos = async () => {
+    for (const item of videoItems) {
+      if (!item.resultUrl) continue;
+      handleDownloadVideo(item);
+      // 브라우저가 "여러 파일 다운로드 허용" 팝업을 안 띄우고 순서대로 받게 살짝 텀을 둔다
+      // eslint-disable-next-line no-await-in-loop
+      await new Promise((r) => setTimeout(r, 350));
+    }
+  };
+
+  const handleRemoveVideoItem = (id: string) => {
+    setVideoItems((prev) => {
+      const idx = prev.findIndex((it) => it.id === id);
+      if (idx === -1) return prev;
+      const removed = prev[idx];
+      URL.revokeObjectURL(removed.objectUrl);
+      if (removed.resultUrl) URL.revokeObjectURL(removed.resultUrl);
+      const next = prev.filter((it) => it.id !== id);
+      setActiveVideoIndex((cur) => Math.max(0, Math.min(cur, next.length - 1)));
+      return next;
+    });
   };
 
   const handleReset = () => {
     images.forEach((it) => URL.revokeObjectURL(it.objectUrl));
+    videoItems.forEach((it) => {
+      URL.revokeObjectURL(it.objectUrl);
+      if (it.resultUrl) URL.revokeObjectURL(it.resultUrl);
+    });
     setImages([]);
     setActiveImageIndex(0);
     setManualAddActive(false);
-    setVideoSrc(null);
-    setVideoResultUrl(null);
-    setVideoProgress(0);
+    setVideoItems([]);
+    setActiveVideoIndex(0);
     setMediaKind(null);
     cancelRef.current = true;
   };
 
-  const hasMedia = mediaKind === 'image' ? images.length > 0 : !!videoSrc;
+  const hasMedia = mediaKind === 'image' ? images.length > 0 : videoItems.length > 0;
 
   return (
     <div className="glass-panel animate-fade-in" style={{ padding: '28px' }}>
@@ -572,8 +647,8 @@ export const MosaicStudio: React.FC = () => {
             토끼 얼굴 모자이크 스튜디오
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-            사진(여러 장 한 번에)이나 영상 속 얼굴을 브라우저에서 바로 인식해 토끼 스티커로 가려드려요. 영상은 자동으로
-            무음 처리됩니다. 모바일 브라우저에서도 그대로 사용할 수 있어요.
+            사진이나 영상(여러 개 한 번에 가능) 속 얼굴을 브라우저에서 바로 인식해 토끼 스티커로 가려드려요. 영상은
+            자동으로 무음 처리됩니다. 모바일 브라우저에서도 그대로 사용할 수 있어요.
           </p>
         </div>
         {hasMedia && (
@@ -616,10 +691,11 @@ export const MosaicStudio: React.FC = () => {
             <Upload size={32} color="#03C75A" />
           </div>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '8px' }}>
-            사진(여러 장 선택 가능) 또는 영상을 여기에 클릭하여 선택하세요
+            사진 또는 영상을 여기에 클릭하여 선택하세요 (여러 개 한 번에 가능)
           </h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-            JPG/PNG/WEBP, MP4/MOV 지원 · 100% 브라우저 내 처리로 파일이 어디로도 업로드되지 않아요
+            JPG/PNG/WEBP, MP4/MOV 지원 · 사진과 영상을 섞어 고르면 사진만 먼저 처리돼요 · 100% 브라우저 내 처리로 파일이
+            어디로도 업로드되지 않아요
           </p>
           {!modelReady && !modelError && (
             <p style={{ color: '#03C75A', fontSize: '0.8rem', marginTop: '10px' }}>얼굴 인식 모델 준비 중...</p>
@@ -647,7 +723,14 @@ export const MosaicStudio: React.FC = () => {
                 <p style={{ marginTop: '10px', fontWeight: 600, fontSize: '0.9rem' }}>{statusMessage}</p>
                 {mediaKind === 'video' && (
                   <div style={{ width: '200px', height: '6px', background: 'rgba(255,255,255,0.1)', borderRadius: '4px', margin: '10px auto 0', overflow: 'hidden' }}>
-                    <div style={{ width: `${Math.round(videoProgress * 100)}%`, height: '100%', background: '#03C75A', transition: 'width 0.2s' }} />
+                    <div
+                      style={{
+                        width: `${Math.round((videoItems.find((it) => it.status === 'processing')?.progress ?? 0) * 100)}%`,
+                        height: '100%',
+                        background: '#03C75A',
+                        transition: 'width 0.2s',
+                      }}
+                    />
                   </div>
                 )}
               </div>
@@ -669,10 +752,10 @@ export const MosaicStudio: React.FC = () => {
                   }}
                 />
               )}
-              {mediaKind === 'video' && !videoResultUrl && (
+              {mediaKind === 'video' && activeVideoItem && !activeVideoItem.resultUrl && (
                 <video
                   ref={videoElRef}
-                  src={videoSrc || undefined}
+                  src={activeVideoItem.objectUrl}
                   controls
                   playsInline
                   muted
@@ -680,19 +763,79 @@ export const MosaicStudio: React.FC = () => {
                 />
               )}
               {mediaKind === 'video' && <canvas ref={canvasRef} style={{ display: 'none' }} />}
-              {videoResultUrl && (
+              {mediaKind === 'video' && activeVideoItem?.resultUrl && (
                 <div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>결과 미리보기 (무음)</p>
-                  <video src={videoResultUrl} controls playsInline style={{ maxWidth: '100%', maxHeight: '480px', borderRadius: '8px' }} />
+                  <video src={activeVideoItem.resultUrl} controls playsInline style={{ maxWidth: '100%', maxHeight: '480px', borderRadius: '8px' }} />
                 </div>
               )}
             </div>
 
-            {!isProcessing && mediaKind === 'video' && !videoResultUrl && (
-              <button onClick={processVideo} className="btn-naver" disabled={!modelReady}>
+            {!isProcessing && mediaKind === 'video' && videoItems.some((it) => it.status !== 'done') && (
+              <button onClick={processVideoQueue} className="btn-naver" disabled={!modelReady}>
                 <Rabbit size={18} />
-                토끼 모자이크 시작
+                {videoItems.length > 1 ? '전체 영상 모자이크 시작' : '토끼 모자이크 시작'}
               </button>
+            )}
+
+            {/* 영상을 여러 개 올렸을 때 큐 목록 — 눌러서 큰 화면에 띄우고 개별 다운로드 */}
+            {mediaKind === 'video' && videoItems.length > 1 && (
+              <div style={{ width: '100%', display: 'flex', flexDirection: 'column', gap: '6px' }}>
+                {videoItems.map((it, idx) => (
+                  <div
+                    key={it.id}
+                    onClick={() => setActiveVideoIndex(idx)}
+                    style={{
+                      display: 'flex',
+                      alignItems: 'center',
+                      gap: '8px',
+                      padding: '8px 10px',
+                      borderRadius: '8px',
+                      cursor: 'pointer',
+                      background: idx === activeVideoIndex ? 'rgba(3,199,90,0.12)' : 'rgba(255,255,255,0.04)',
+                      border: idx === activeVideoIndex ? '1px solid rgba(3,199,90,0.4)' : '1px solid transparent',
+                    }}
+                  >
+                    <span style={{ flex: 1, fontSize: '0.82rem', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', textAlign: 'left' }}>
+                      {it.file.name}
+                    </span>
+                    <span
+                      style={{
+                        fontSize: '0.75rem',
+                        color: it.status === 'done' ? '#03C75A' : it.status === 'error' ? '#f87171' : 'var(--text-muted)',
+                        flexShrink: 0,
+                      }}
+                    >
+                      {it.status === 'pending' && '대기중'}
+                      {it.status === 'processing' && `처리중 ${Math.round(it.progress * 100)}%`}
+                      {it.status === 'done' && '완료'}
+                      {it.status === 'error' && '오류'}
+                    </span>
+                    {it.status === 'done' && it.resultUrl && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDownloadVideo(it);
+                        }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#03C75A', display: 'flex', padding: 0 }}
+                      >
+                        <Download size={16} />
+                      </button>
+                    )}
+                    {it.status !== 'processing' && (
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleRemoveVideoItem(it.id);
+                        }}
+                        style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', display: 'flex', padding: 0 }}
+                      >
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+                ))}
+              </div>
             )}
 
             {/* 여러 장 업로드했을 때 썸네일 스트립 — 눌러서 큰 화면에 띄우고 편집 */}
@@ -853,11 +996,21 @@ export const MosaicStudio: React.FC = () => {
                 )}
               </div>
             )}
-            {mediaKind === 'video' && videoResultUrl && (
-              <button onClick={handleDownloadVideo} className="btn-naver" style={{ justifyContent: 'center' }}>
-                <Download size={18} />
-                영상 다운로드 (무음)
-              </button>
+            {mediaKind === 'video' && (
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                {activeVideoItem?.resultUrl && (
+                  <button onClick={() => handleDownloadVideo(activeVideoItem)} className="btn-naver" style={{ justifyContent: 'center' }}>
+                    <Download size={18} />
+                    {videoItems.length > 1 ? '이 영상 다운로드 (무음)' : '영상 다운로드 (무음)'}
+                  </button>
+                )}
+                {videoItems.length > 1 && videoItems.some((it) => it.resultUrl) && (
+                  <button onClick={handleDownloadAllVideos} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                    <Download size={16} />
+                    완료된 영상 전체 다운로드
+                  </button>
+                )}
+              </div>
             )}
 
             <div style={{ background: 'rgba(3, 199, 90, 0.08)', border: '1px solid rgba(3, 199, 90, 0.2)', borderRadius: '10px', padding: '12px', fontSize: '0.8rem', color: '#94a3b8' }}>
