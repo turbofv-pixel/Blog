@@ -1,5 +1,16 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
-import { Upload, Download, RefreshCw, CheckCircle2, Sparkles, AlertTriangle, Rabbit, Grid3x3 } from 'lucide-react';
+import React, { useState, useRef, useEffect } from 'react';
+import {
+  Upload,
+  Download,
+  RefreshCw,
+  CheckCircle2,
+  Sparkles,
+  AlertTriangle,
+  Rabbit,
+  Grid3x3,
+  Hand,
+  X,
+} from 'lucide-react';
 
 declare global {
   interface Window {
@@ -11,10 +22,22 @@ type MosaicMode = 'rabbit' | 'pixelate';
 type MediaKind = 'image' | 'video';
 
 interface DetectedFace {
+  id: string;
   x: number;
   y: number;
   width: number;
   height: number;
+  source: 'auto' | 'manual';
+}
+
+interface ImageItem {
+  id: string;
+  file: File;
+  objectUrl: string;
+  img: HTMLImageElement | null;
+  faces: DetectedFace[];
+  previewUrl: string | null;
+  status: 'pending' | 'detecting' | 'done' | 'error';
 }
 
 // GitHub Pages 배포 시 base가 '/Blog/' 이므로, 정적 자산은 항상 BASE_URL을 기준으로 찾는다
@@ -28,6 +51,11 @@ const FACE_MARGIN = 1.9;
 const VIDEO_DETECT_INTERVAL_MS = 220;
 // 프레임 간 스티커 위치 스무딩 (0=고정, 1=매번 그대로 점프)
 const SMOOTHING_ALPHA = 0.4;
+// 사진 얼굴 인식 옵션. 영상(실시간, 초당 여러 번 재인식)보다 사진은 한 번만 돌리면 되니
+// 더 큰 inputSize + 낮은 threshold로 작은/애매한 얼굴까지 최대한 잡아낸다.
+const IMAGE_DETECT_OPTS = { inputSize: 512, scoreThreshold: 0.4 };
+const VIDEO_DETECT_OPTS = { inputSize: 320, scoreThreshold: 0.45 };
+const THUMB_MAX_DIM = 320;
 
 let modelsLoadingPromise: Promise<void> | null = null;
 function ensureModelsLoaded(): Promise<void> {
@@ -50,9 +78,14 @@ function loadImageEl(src: string): Promise<HTMLImageElement> {
   });
 }
 
-async function detectFacesIn(el: HTMLImageElement | HTMLVideoElement): Promise<DetectedFace[]> {
+const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
+
+async function detectFacesIn(
+  el: HTMLImageElement | HTMLVideoElement,
+  opts: { inputSize: number; scoreThreshold: number }
+): Promise<Omit<DetectedFace, 'id' | 'source'>[]> {
   const faceapi = window.faceapi;
-  const options = new faceapi.TinyFaceDetectorOptions({ inputSize: 320, scoreThreshold: 0.5 });
+  const options = new faceapi.TinyFaceDetectorOptions(opts);
   const detections = await faceapi.detectAllFaces(el, options);
   return detections.map((d: any) => ({ x: d.box.x, y: d.box.y, width: d.box.width, height: d.box.height }));
 }
@@ -60,7 +93,7 @@ async function detectFacesIn(el: HTMLImageElement | HTMLVideoElement): Promise<D
 function drawPixelate(
   ctx: CanvasRenderingContext2D,
   source: CanvasImageSource,
-  face: DetectedFace,
+  face: { x: number; y: number; width: number; height: number },
   pixelSize: number
 ) {
   const cx = face.x + face.width / 2;
@@ -90,7 +123,11 @@ function drawPixelate(
   ctx.restore();
 }
 
-function drawRabbit(ctx: CanvasRenderingContext2D, bunny: HTMLImageElement, face: DetectedFace) {
+function drawRabbit(
+  ctx: CanvasRenderingContext2D,
+  bunny: HTMLImageElement,
+  face: { x: number; y: number; width: number; height: number }
+) {
   const cx = face.x + face.width / 2;
   const cy = face.y + face.height / 2;
   const r = Math.max(face.width, face.height) / 2;
@@ -101,22 +138,78 @@ function drawRabbit(ctx: CanvasRenderingContext2D, bunny: HTMLImageElement, face
   ctx.drawImage(bunny, dx, dy, diam, diam);
 }
 
+function renderFacesToCanvas(
+  canvas: HTMLCanvasElement,
+  img: HTMLImageElement,
+  faces: DetectedFace[],
+  mode: MosaicMode,
+  pixelSize: number,
+  bunny: HTMLImageElement | null
+) {
+  canvas.width = img.naturalWidth || img.width;
+  canvas.height = img.naturalHeight || img.height;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+  ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+  faces.forEach((face) => {
+    if (mode === 'rabbit' && bunny) drawRabbit(ctx, bunny, face);
+    else drawPixelate(ctx, img, face, pixelSize);
+  });
+}
+
+function renderToDataUrl(
+  img: HTMLImageElement,
+  faces: DetectedFace[],
+  mode: MosaicMode,
+  pixelSize: number,
+  bunny: HTMLImageElement | null,
+  maxDim?: number
+): string {
+  const full = document.createElement('canvas');
+  renderFacesToCanvas(full, img, faces, mode, pixelSize, bunny);
+  if (!maxDim || (full.width <= maxDim && full.height <= maxDim)) {
+    return full.toDataURL('image/png');
+  }
+  const scale = maxDim / Math.max(full.width, full.height);
+  const thumb = document.createElement('canvas');
+  thumb.width = Math.max(1, Math.round(full.width * scale));
+  thumb.height = Math.max(1, Math.round(full.height * scale));
+  const tctx = thumb.getContext('2d');
+  if (tctx) tctx.drawImage(full, 0, 0, thumb.width, thumb.height);
+  return thumb.toDataURL('image/jpeg', 0.82);
+}
+
+function downloadDataUrl(dataUrl: string, filename: string) {
+  const link = document.createElement('a');
+  link.download = filename;
+  link.href = dataUrl;
+  link.click();
+}
+
 export const MosaicStudio: React.FC = () => {
-  const [mediaSrc, setMediaSrc] = useState<string | null>(null);
   const [mediaKind, setMediaKind] = useState<MediaKind | null>(null);
   const [mode, setMode] = useState<MosaicMode>('rabbit');
   const [pixelSize, setPixelSize] = useState<number>(14);
   const [isProcessing, setIsProcessing] = useState<boolean>(false);
-  const [statusMessage, setStatusMessage] = useState<string>('사진이나 영상을 선택하면 자동으로 얼굴을 찾아 토끼로 가려드려요.');
+  const [statusMessage, setStatusMessage] = useState<string>(
+    '사진(여러 장 가능)이나 영상을 선택하면 자동으로 얼굴을 찾아 토끼로 가려드려요.'
+  );
   const [modelReady, setModelReady] = useState<boolean>(false);
   const [modelError, setModelError] = useState<string | null>(null);
-  const [faceCount, setFaceCount] = useState<number | null>(null);
+
+  // --- 사진(여러 장) 배치 상태 ---
+  const [images, setImages] = useState<ImageItem[]>([]);
+  const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
+  const [manualAddActive, setManualAddActive] = useState<boolean>(false);
+  const [manualSizePct, setManualSizePct] = useState<number>(16); // 이미지 짧은 변 대비 %
+
+  // --- 영상(단일 파일) 상태 ---
+  const [videoSrc, setVideoSrc] = useState<string | null>(null);
   const [videoResultUrl, setVideoResultUrl] = useState<string | null>(null);
   const [videoResultExt, setVideoResultExt] = useState<string>('webm');
   const [videoProgress, setVideoProgress] = useState<number>(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
-  const imageRef = useRef<HTMLImageElement | null>(null);
   const videoElRef = useRef<HTMLVideoElement | null>(null);
   const bunnyRef = useRef<HTMLImageElement | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
@@ -131,75 +224,134 @@ export const MosaicStudio: React.FC = () => {
       .catch((e) => setModelError(e.message || '얼굴 인식 모델 로딩 실패'));
   }, []);
 
-  const renderImageMosaic = useCallback(
-    async (img: HTMLImageElement, faces: DetectedFace[]) => {
-      const canvas = canvasRef.current;
-      const bunny = bunnyRef.current;
-      if (!canvas) return;
-      canvas.width = img.width;
-      canvas.height = img.height;
-      const ctx = canvas.getContext('2d');
-      if (!ctx) return;
-      ctx.drawImage(img, 0, 0);
-      faces.forEach((face) => {
-        if (mode === 'rabbit' && bunny) drawRabbit(ctx, bunny, face);
-        else drawPixelate(ctx, img, face, pixelSize);
-      });
-    },
-    [mode, pixelSize]
-  );
+  const activeImage = mediaKind === 'image' ? images[activeImageIndex] : undefined;
+
+  // 활성 사진의 큰 캔버스를 얼굴/모드/픽셀크기 바뀔 때마다 다시 그린다
+  useEffect(() => {
+    if (mediaKind !== 'image' || !canvasRef.current || !activeImage?.img) return;
+    renderFacesToCanvas(canvasRef.current, activeImage.img, activeImage.faces, mode, pixelSize, bunnyRef.current);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mediaKind, activeImageIndex, activeImage?.faces, activeImage?.img, mode, pixelSize]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setVideoResultUrl(null);
-    setFaceCount(null);
-    const kind: MediaKind = file.type.startsWith('video/') ? 'video' : 'image';
-    setMediaKind(kind);
-    const url = URL.createObjectURL(file);
-    setMediaSrc(url);
+    const files = Array.from(e.target.files || []);
+    if (files.length === 0) return;
+    const videoFiles = files.filter((f) => f.type.startsWith('video/'));
+    const imageFiles = files.filter((f) => f.type.startsWith('image/'));
 
-    if (kind === 'image') {
-      processImage(url);
-    } else {
+    setVideoResultUrl(null);
+    setManualAddActive(false);
+
+    if (imageFiles.length > 0) {
+      startImageBatch(imageFiles, videoFiles.length > 0);
+    } else if (videoFiles.length > 0) {
+      setMediaKind('video');
+      setImages([]);
+      const url = URL.createObjectURL(videoFiles[0]);
+      setVideoSrc(url);
       setStatusMessage('영상을 불러왔습니다. 아래 "토끼 모자이크 시작" 버튼을 눌러주세요.');
     }
+    // 같은 파일을 다시 선택해도 onChange가 또 뜨도록 입력값 초기화
+    e.target.value = '';
   };
 
-  const processImage = async (src: string) => {
+  const startImageBatch = async (files: File[], skippedVideos: boolean) => {
+    setMediaKind('image');
+    setVideoSrc(null);
+    const items: ImageItem[] = files.map((f) => ({
+      id: uid(),
+      file: f,
+      objectUrl: URL.createObjectURL(f),
+      img: null,
+      faces: [],
+      previewUrl: null,
+      status: 'pending',
+    }));
+    setImages(items);
+    setActiveImageIndex(0);
     setIsProcessing(true);
-    setStatusMessage('얼굴을 찾는 중입니다...');
+    setStatusMessage(
+      (skippedVideos ? '영상 파일은 이번엔 건너뛰었어요 (영상은 한 번에 하나씩만 처리돼요). ' : '') +
+        `사진 ${items.length}장에서 얼굴을 찾는 중입니다...`
+    );
+
     try {
       await ensureModelsLoaded();
-      const img = await loadImageEl(src);
-      imageRef.current = img;
-      const faces = await detectFacesIn(img);
-      setFaceCount(faces.length);
-      await renderImageMosaic(img, faces);
-      setStatusMessage(
-        faces.length > 0
-          ? `✨ 얼굴 ${faces.length}개를 찾아 토끼로 가렸습니다.`
-          : '⚠️ 얼굴을 찾지 못했습니다. 사진 속 인물이 정면을 보고 있는지 확인해주세요.'
-      );
-    } catch (err: any) {
-      setStatusMessage(`❌ 처리 중 오류: ${err.message || err}`);
-    } finally {
-      setIsProcessing(false);
+    } catch {
+      // modelError 상태가 이미 배너로 표시되므로 여기서는 조용히 계속 진행(얼굴 0개로 처리됨)
+    }
+
+    for (let i = 0; i < items.length; i++) {
+      await processOneImage(items[i].id, items[i].objectUrl);
+    }
+    setIsProcessing(false);
+    setStatusMessage(`✨ 사진 ${items.length}장 처리 완료! 자동으로 못 찾은 얼굴이 있으면 "얼굴 직접 추가"로 눌러서 채워주세요.`);
+  };
+
+  const processOneImage = async (id: string, objectUrl: string) => {
+    setImages((prev) => prev.map((it) => (it.id === id ? { ...it, status: 'detecting' } : it)));
+    try {
+      const img = await loadImageEl(objectUrl);
+      let rawFaces: Omit<DetectedFace, 'id' | 'source'>[] = [];
+      try {
+        rawFaces = await detectFacesIn(img, IMAGE_DETECT_OPTS);
+      } catch {
+        // 모델이 없으면 얼굴 0개로 남기고 계속 (사용자가 수동 추가 가능)
+      }
+      const faces: DetectedFace[] = rawFaces.map((f) => ({ ...f, id: uid(), source: 'auto' }));
+      const previewUrl = renderToDataUrl(img, faces, mode, pixelSize, bunnyRef.current, THUMB_MAX_DIM);
+      setImages((prev) => prev.map((it) => (it.id === id ? { ...it, img, faces, previewUrl, status: 'done' } : it)));
+    } catch {
+      setImages((prev) => prev.map((it) => (it.id === id ? { ...it, status: 'error' } : it)));
     }
   };
 
-  // mode/pixelSize가 바뀌면 사진 모드에서는 다시 그려준다 (얼굴은 재탐지할 필요 없음)
+  // 모드/픽셀크기가 바뀌면 모든 사진의 썸네일도 다시 렌더링
   useEffect(() => {
-    if (mediaKind === 'image' && imageRef.current && faceCount !== null) {
-      (async () => {
-        const img = imageRef.current!;
-        await ensureModelsLoaded();
-        const faces = await detectFacesIn(img);
-        renderImageMosaic(img, faces);
-      })();
-    }
+    if (mediaKind !== 'image') return;
+    setImages((prev) =>
+      prev.map((it) =>
+        it.img ? { ...it, previewUrl: renderToDataUrl(it.img, it.faces, mode, pixelSize, bunnyRef.current, THUMB_MAX_DIM) } : it
+      )
+    );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode, pixelSize]);
+
+  // 캔버스를 눌러서 얼굴 영역을 수동으로 추가/제거 (기존 마커를 다시 누르면 제거)
+  const handleCanvasClick = (e: React.MouseEvent<HTMLCanvasElement>) => {
+    if (!manualAddActive || mediaKind !== 'image') return;
+    const canvas = canvasRef.current;
+    if (!canvas || !activeImage?.img) return;
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    const x = (e.clientX - rect.left) * scaleX;
+    const y = (e.clientY - rect.top) * scaleY;
+    const activeId = activeImage.id;
+    const imgW = activeImage.img.naturalWidth || activeImage.img.width;
+    const imgH = activeImage.img.naturalHeight || activeImage.img.height;
+
+    setImages((prev) =>
+      prev.map((it) => {
+        if (it.id !== activeId || !it.img) return it;
+        const hitIdx = it.faces.findIndex((f) => {
+          const cx = f.x + f.width / 2;
+          const cy = f.y + f.height / 2;
+          const r = (Math.max(f.width, f.height) / 2) * FACE_MARGIN;
+          return Math.hypot(cx - x, cy - y) <= r;
+        });
+        let faces: DetectedFace[];
+        if (hitIdx >= 0) {
+          faces = it.faces.filter((_, i) => i !== hitIdx);
+        } else {
+          const side = Math.min(imgW, imgH) * (manualSizePct / 100);
+          faces = [...it.faces, { id: uid(), source: 'manual', x: x - side / 2, y: y - side / 2, width: side, height: side }];
+        }
+        const previewUrl = renderToDataUrl(it.img, faces, mode, pixelSize, bunnyRef.current, THUMB_MAX_DIM);
+        return { ...it, faces, previewUrl };
+      })
+    );
+  };
 
   const pickSupportedMimeType = (): string => {
     const candidates = [
@@ -219,7 +371,7 @@ export const MosaicStudio: React.FC = () => {
     const video = videoElRef.current;
     const canvas = canvasRef.current;
     const bunny = bunnyRef.current;
-    if (!video || !canvas || !mediaSrc) return;
+    if (!video || !canvas || !videoSrc) return;
 
     setIsProcessing(true);
     setVideoResultUrl(null);
@@ -291,7 +443,7 @@ export const MosaicStudio: React.FC = () => {
         if (now - lastDetectTime >= VIDEO_DETECT_INTERVAL_MS) {
           lastDetectTime = now;
           try {
-            const faces = await detectFacesIn(video);
+            const faces = await detectFacesIn(video, VIDEO_DETECT_OPTS);
             const newCenters = faces.map((f) => ({
               cx: f.x + f.width / 2,
               cy: f.y + f.height / 2,
@@ -361,13 +513,32 @@ export const MosaicStudio: React.FC = () => {
     );
   };
 
-  const handleDownloadImage = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const link = document.createElement('a');
-    link.download = `rabbit_mosaic_${Date.now()}.png`;
-    link.href = canvas.toDataURL('image/png');
-    link.click();
+  const handleDownloadActiveImage = () => {
+    if (!activeImage?.img) return;
+    const dataUrl = renderToDataUrl(activeImage.img, activeImage.faces, mode, pixelSize, bunnyRef.current);
+    downloadDataUrl(dataUrl, `rabbit_${activeImage.file.name.replace(/\.[^.]+$/, '')}.png`);
+  };
+
+  const handleDownloadAllImages = async () => {
+    for (const item of images) {
+      if (!item.img) continue;
+      const dataUrl = renderToDataUrl(item.img, item.faces, mode, pixelSize, bunnyRef.current);
+      downloadDataUrl(dataUrl, `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.png`);
+      // 브라우저가 "여러 파일 다운로드 허용" 팝업을 안 띄우고 순서대로 받게 살짝 텀을 둔다
+      await new Promise((r) => setTimeout(r, 350));
+    }
+  };
+
+  const handleRemoveImage = (id: string) => {
+    setImages((prev) => {
+      const idx = prev.findIndex((it) => it.id === id);
+      if (idx === -1) return prev;
+      const removed = prev[idx];
+      URL.revokeObjectURL(removed.objectUrl);
+      const next = prev.filter((it) => it.id !== id);
+      setActiveImageIndex((cur) => Math.max(0, Math.min(cur, next.length - 1)));
+      return next;
+    });
   };
 
   const handleDownloadVideo = () => {
@@ -379,13 +550,18 @@ export const MosaicStudio: React.FC = () => {
   };
 
   const handleReset = () => {
-    setMediaSrc(null);
-    setMediaKind(null);
+    images.forEach((it) => URL.revokeObjectURL(it.objectUrl));
+    setImages([]);
+    setActiveImageIndex(0);
+    setManualAddActive(false);
+    setVideoSrc(null);
     setVideoResultUrl(null);
-    setFaceCount(null);
     setVideoProgress(0);
+    setMediaKind(null);
     cancelRef.current = true;
   };
+
+  const hasMedia = mediaKind === 'image' ? images.length > 0 : !!videoSrc;
 
   return (
     <div className="glass-panel animate-fade-in" style={{ padding: '28px' }}>
@@ -396,11 +572,11 @@ export const MosaicStudio: React.FC = () => {
             토끼 얼굴 모자이크 스튜디오
           </h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem', marginTop: '4px' }}>
-            사진·영상 속 얼굴을 브라우저에서 바로 인식해 토끼 스티커로 가려드려요. 영상은 자동으로 무음 처리됩니다.
-            모바일 브라우저에서도 그대로 사용할 수 있어요.
+            사진(여러 장 한 번에)이나 영상 속 얼굴을 브라우저에서 바로 인식해 토끼 스티커로 가려드려요. 영상은 자동으로
+            무음 처리됩니다. 모바일 브라우저에서도 그대로 사용할 수 있어요.
           </p>
         </div>
-        {mediaSrc && (
+        {hasMedia && (
           <button onClick={handleReset} className="btn-secondary">
             <RefreshCw size={16} />
             다른 파일로 변경
@@ -411,11 +587,12 @@ export const MosaicStudio: React.FC = () => {
       {modelError && (
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: '#f87171', background: 'rgba(248,113,113,0.08)', border: '1px solid rgba(248,113,113,0.25)', borderRadius: '10px', padding: '10px 14px', marginBottom: '16px', fontSize: '0.85rem' }}>
           <AlertTriangle size={16} />
-          얼굴 인식 모델을 불러오지 못했습니다: {modelError} (새로고침 후 다시 시도해주세요)
+          얼굴 인식 모델을 불러오지 못했습니다: {modelError} (새로고침 후 다시 시도하거나, "얼굴 직접 추가"로 수동
+          처리해주세요)
         </div>
       )}
 
-      {!mediaSrc ? (
+      {!hasMedia ? (
         <div
           style={{
             border: '2px dashed rgba(3, 199, 90, 0.4)',
@@ -431,6 +608,7 @@ export const MosaicStudio: React.FC = () => {
             ref={fileInputRef}
             type="file"
             accept="image/*,video/*"
+            multiple
             onChange={handleFileChange}
             style={{ display: 'none' }}
           />
@@ -438,7 +616,7 @@ export const MosaicStudio: React.FC = () => {
             <Upload size={32} color="#03C75A" />
           </div>
           <h3 style={{ fontSize: '1.1rem', fontWeight: 700, marginBottom: '8px' }}>
-            사진 또는 영상을 여기에 클릭하여 선택하세요
+            사진(여러 장 선택 가능) 또는 영상을 여기에 클릭하여 선택하세요
           </h3>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
             JPG/PNG/WEBP, MP4/MOV 지원 · 100% 브라우저 내 처리로 파일이 어디로도 업로드되지 않아요
@@ -476,23 +654,32 @@ export const MosaicStudio: React.FC = () => {
             )}
 
             <div style={{ width: '100%', overflow: 'auto', textAlign: 'center', display: isProcessing && mediaKind === 'video' ? 'none' : 'block' }}>
-              <canvas
-                ref={canvasRef}
-                style={{ maxWidth: '100%', maxHeight: '480px', borderRadius: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.5)', display: mediaKind === 'image' ? 'block' : 'none', margin: '0 auto' }}
-              />
+              {mediaKind === 'image' && (
+                <canvas
+                  ref={canvasRef}
+                  onClick={handleCanvasClick}
+                  style={{
+                    maxWidth: '100%',
+                    maxHeight: '480px',
+                    borderRadius: '8px',
+                    boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+                    margin: '0 auto',
+                    display: 'block',
+                    cursor: manualAddActive ? 'crosshair' : 'default',
+                  }}
+                />
+              )}
               {mediaKind === 'video' && !videoResultUrl && (
                 <video
                   ref={videoElRef}
-                  src={mediaSrc}
+                  src={videoSrc || undefined}
                   controls
                   playsInline
                   muted
                   style={{ maxWidth: '100%', maxHeight: '480px', borderRadius: '8px' }}
                 />
               )}
-              {mediaKind === 'video' && (
-                <canvas ref={canvasRef} style={{ display: 'none' }} />
-              )}
+              {mediaKind === 'video' && <canvas ref={canvasRef} style={{ display: 'none' }} />}
               {videoResultUrl && (
                 <div>
                   <p style={{ fontSize: '0.8rem', color: 'var(--text-muted)', marginBottom: '8px' }}>결과 미리보기 (무음)</p>
@@ -506,6 +693,60 @@ export const MosaicStudio: React.FC = () => {
                 <Rabbit size={18} />
                 토끼 모자이크 시작
               </button>
+            )}
+
+            {/* 여러 장 업로드했을 때 썸네일 스트립 — 눌러서 큰 화면에 띄우고 편집 */}
+            {mediaKind === 'image' && images.length > 1 && (
+              <div style={{ width: '100%', display: 'flex', gap: '8px', overflowX: 'auto', padding: '4px 2px' }}>
+                {images.map((it, idx) => (
+                  <div
+                    key={it.id}
+                    onClick={() => setActiveImageIndex(idx)}
+                    style={{
+                      position: 'relative',
+                      flex: '0 0 auto',
+                      width: '68px',
+                      height: '68px',
+                      borderRadius: '8px',
+                      overflow: 'hidden',
+                      border: idx === activeImageIndex ? '2px solid #03C75A' : '2px solid transparent',
+                      cursor: 'pointer',
+                      background: '#1e293b',
+                    }}
+                  >
+                    {it.previewUrl ? (
+                      <img src={it.previewUrl} alt="" style={{ width: '100%', height: '100%', objectFit: 'cover' }} />
+                    ) : (
+                      <div style={{ width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                        <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite', color: '#03C75A' }} />
+                      </div>
+                    )}
+                    <button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        handleRemoveImage(it.id);
+                      }}
+                      style={{
+                        position: 'absolute',
+                        top: 2,
+                        right: 2,
+                        background: 'rgba(0,0,0,0.6)',
+                        border: 'none',
+                        borderRadius: '50%',
+                        width: '18px',
+                        height: '18px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center',
+                        cursor: 'pointer',
+                        padding: 0,
+                      }}
+                    >
+                      <X size={11} color="#fff" />
+                    </button>
+                  </div>
+                ))}
+              </div>
             )}
           </div>
 
@@ -547,17 +788,70 @@ export const MosaicStudio: React.FC = () => {
               </div>
             )}
 
-            {faceCount !== null && mediaKind === 'image' && (
+            {mediaKind === 'image' && (
+              <>
+                <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)' }} />
+                <div>
+                  <button
+                    onClick={() => setManualAddActive((v) => !v)}
+                    className={manualAddActive ? 'btn-naver' : 'btn-secondary'}
+                    style={{ width: '100%', justifyContent: 'center' }}
+                  >
+                    <Hand size={16} />
+                    {manualAddActive ? '얼굴 직접 추가 중 (사진을 눌러 추가)' : '얼굴 직접 추가'}
+                  </button>
+                  <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '6px' }}>
+                    자동으로 못 찾은 얼굴이 있으면 켜고 사진에서 그 자리를 눌러주세요. 이미 놓인 자리를 다시 누르면
+                    지워져요.
+                  </p>
+                </div>
+                {manualAddActive && (
+                  <div>
+                    <label style={{ display: 'flex', justifyContent: 'space-between', fontWeight: 600, fontSize: '0.85rem', marginBottom: '8px' }}>
+                      <span>추가할 크기</span>
+                      <span style={{ color: '#03C75A' }}>{manualSizePct}%</span>
+                    </label>
+                    <input
+                      type="range"
+                      min="6"
+                      max="40"
+                      value={manualSizePct}
+                      onChange={(e) => setManualSizePct(Number(e.target.value))}
+                      style={{ width: '100%', accentColor: '#03C75A' }}
+                    />
+                  </div>
+                )}
+                <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)' }} />
+              </>
+            )}
+
+            {mediaKind === 'image' && activeImage && (
               <div style={{ fontSize: '0.85rem', color: 'var(--text-muted)' }}>
-                감지된 얼굴: <strong style={{ color: '#03C75A' }}>{faceCount}개</strong>
+                {images.length > 1 && (
+                  <div style={{ marginBottom: '4px' }}>
+                    사진 {activeImageIndex + 1} / {images.length}
+                  </div>
+                )}
+                감지된 얼굴: <strong style={{ color: '#03C75A' }}>{activeImage.faces.length}개</strong>
+                {activeImage.faces.some((f) => f.source === 'manual') && (
+                  <span style={{ color: '#94a3b8' }}> (수동 {activeImage.faces.filter((f) => f.source === 'manual').length}개 포함)</span>
+                )}
               </div>
             )}
 
             {mediaKind === 'image' && (
-              <button onClick={handleDownloadImage} className="btn-naver" style={{ justifyContent: 'center' }}>
-                <Download size={18} />
-                사진 다운로드
-              </button>
+              <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+                <button onClick={handleDownloadActiveImage} className="btn-naver" style={{ justifyContent: 'center' }}>
+                  <Download size={18} />
+                  {images.length > 1 ? '이 사진 다운로드' : '사진 다운로드'}
+                </button>
+                {images.length > 1 && (
+                  <button onClick={handleDownloadAllImages} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                    <Download size={16} />
+                    전체 {images.length}장 한번에 다운로드
+                  </button>
+                )}
+              </div>
             )}
             {mediaKind === 'video' && videoResultUrl && (
               <button onClick={handleDownloadVideo} className="btn-naver" style={{ justifyContent: 'center' }}>
@@ -571,7 +865,9 @@ export const MosaicStudio: React.FC = () => {
                 <CheckCircle2 size={16} />
                 사용 팁
               </div>
-              영상은 얼굴 각도·화질에 따라 인식이 놓칠 수 있어요. 처리 후 결과 미리보기로 얼굴이 잘 가려졌는지 꼭 확인하세요.
+              {mediaKind === 'image'
+                ? '자동 인식이 옆모습·역광·작은 얼굴을 놓칠 수 있어요. 그럴 땐 "얼굴 직접 추가"를 켜고 사진을 눌러 채워주세요.'
+                : '영상은 얼굴 각도·화질에 따라 인식이 놓칠 수 있어요. 처리 후 결과 미리보기로 얼굴이 잘 가려졌는지 꼭 확인하세요.'}
             </div>
           </div>
         </div>
