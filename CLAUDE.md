@@ -31,9 +31,9 @@ git history). That workflow is retired for new parenting posts. Now:
 1. The user uploads raw photos/videos into the in-app **MosaicStudio** tool
    (`src/components/MosaicStudio.tsx`) from their own device — never into this repo.
 2. MosaicStudio blurs faces client-side (bunny sticker or pixelate mode) and, on download,
-   names the output `rabbit_<original-filename-without-extension>.<ext>` (`.png` for photos,
+   names the output `rabbit_<original-filename-without-extension>.<ext>` (`.jpg` for photos,
    `.webm`/`.mp4` for videos per `resultExt`) — **the original filename is preserved**, which
-   for a phone camera is a timestamp (e.g. `20260808_154453.jpg` → `rabbit_20260808_154453.png`).
+   for a phone camera is a timestamp (e.g. `20260808_154453.jpg` → `rabbit_20260808_154453.jpg`).
    That preserved timestamp is the "metadata" Claude should plan around: it's what tells you
    shooting order/time-of-day across a batch without needing to invent descriptive slugs.
 3. The user uploads only the already-processed `rabbit_*` files to this repo. When writing a
