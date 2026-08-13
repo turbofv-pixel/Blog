@@ -331,7 +331,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             카테고리 선택
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {(['전체', '육아', 'IT', '여행', '주식'] as Category[]).map((cat) => (
+            {(['전체', '육아', 'IT', '여행', '주식', '부동산'] as Category[]).map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}

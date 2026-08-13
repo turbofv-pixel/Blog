@@ -10,6 +10,7 @@ import {
   Grid3x3,
   Hand,
   X,
+  Undo2,
 } from 'lucide-react';
 
 declare global {
@@ -36,9 +37,12 @@ interface ImageItem {
   objectUrl: string;
   img: HTMLImageElement | null;
   faces: DetectedFace[];
+  history: DetectedFace[][]; // "얼굴 직접 추가"로 손댈 때마다 직전 상태를 쌓아두는 되돌리기 스택
   previewUrl: string | null;
   status: 'pending' | 'detecting' | 'done' | 'error';
 }
+
+const MAX_UNDO_HISTORY = 20;
 
 interface VideoItem {
   id: string;
@@ -236,10 +240,18 @@ export const MosaicStudio: React.FC = () => {
   const activeImage = mediaKind === 'image' ? images[activeImageIndex] : undefined;
   const activeVideoItem = mediaKind === 'video' ? videoItems[activeVideoIndex] : undefined;
 
-  // 활성 사진의 큰 캔버스를 얼굴/모드/픽셀크기 바뀔 때마다 다시 그린다
+  // 활성 사진의 큰 캔버스를 얼굴/모드/픽셀크기 바뀔 때마다 다시 그린다. 아직 처리 전인 사진으로
+  // 넘어갔을 때(img가 아직 없음) 캔버스를 비워서, 직전 사진이 그대로 남아있는 것처럼 보이는 걸
+  // 막는다 — 배치 처리 중 순서를 앞질러 다른 사진을 눌렀을 때 헷갈리는 원인이었다.
   useEffect(() => {
-    if (mediaKind !== 'image' || !canvasRef.current || !activeImage?.img) return;
-    renderFacesToCanvas(canvasRef.current, activeImage.img, activeImage.faces, mode, pixelSize, bunnyRef.current);
+    const canvas = canvasRef.current;
+    if (mediaKind !== 'image' || !canvas) return;
+    if (!activeImage?.img) {
+      const ctx = canvas.getContext('2d');
+      if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height);
+      return;
+    }
+    renderFacesToCanvas(canvas, activeImage.img, activeImage.faces, mode, pixelSize, bunnyRef.current);
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mediaKind, activeImageIndex, activeImage?.faces, activeImage?.img, mode, pixelSize]);
 
@@ -291,6 +303,7 @@ export const MosaicStudio: React.FC = () => {
       objectUrl: URL.createObjectURL(f),
       img: null,
       faces: [],
+      history: [],
       previewUrl: null,
       status: 'pending',
     }));
@@ -309,6 +322,10 @@ export const MosaicStudio: React.FC = () => {
     }
 
     for (let i = 0; i < items.length; i++) {
+      if (items.length > 1) {
+        setStatusMessage(`사진 처리 중... (${i + 1}/${items.length})`);
+      }
+      // eslint-disable-next-line no-await-in-loop
       await processOneImage(items[i].id, items[i].objectUrl);
     }
     setIsProcessing(false);
@@ -375,7 +392,24 @@ export const MosaicStudio: React.FC = () => {
           faces = [...it.faces, { id: uid(), source: 'manual', x: x - side / 2, y: y - side / 2, width: side, height: side }];
         }
         const previewUrl = renderToDataUrl(it.img, faces, mode, pixelSize, bunnyRef.current, THUMB_MAX_DIM);
-        return { ...it, faces, previewUrl };
+        // 클릭 직전 상태를 되돌리기 스택에 쌓는다 (최근 MAX_UNDO_HISTORY개만 유지)
+        const history = [...it.history, it.faces].slice(-MAX_UNDO_HISTORY);
+        return { ...it, faces, previewUrl, history };
+      })
+    );
+  };
+
+  // 방금 한 "얼굴 직접 추가/제거" 한 번을 되돌린다
+  const handleUndoManualFace = () => {
+    if (!activeImage?.img) return;
+    const activeId = activeImage.id;
+    setImages((prev) =>
+      prev.map((it) => {
+        if (it.id !== activeId || !it.img || it.history.length === 0) return it;
+        const history = [...it.history];
+        const faces = history.pop() as DetectedFace[];
+        const previewUrl = renderToDataUrl(it.img, faces, mode, pixelSize, bunnyRef.current, THUMB_MAX_DIM);
+        return { ...it, faces, previewUrl, history };
       })
     );
   };
@@ -737,6 +771,14 @@ export const MosaicStudio: React.FC = () => {
             )}
 
             <div style={{ width: '100%', overflow: 'auto', textAlign: 'center', display: isProcessing && mediaKind === 'video' ? 'none' : 'block' }}>
+              {mediaKind === 'image' && !activeImage?.img && (
+                <div style={{ padding: '60px 20px', color: 'var(--text-muted)' }}>
+                  <RefreshCw size={26} style={{ animation: 'spin 1s linear infinite', color: '#03C75A' }} />
+                  <p style={{ marginTop: '10px', fontSize: '0.85rem' }}>
+                    이 사진은 아직 처리 전이에요. 순서대로 처리되고 있으니 잠시만 기다려주세요...
+                  </p>
+                </div>
+              )}
               {mediaKind === 'image' && (
                 <canvas
                   ref={canvasRef}
@@ -747,7 +789,7 @@ export const MosaicStudio: React.FC = () => {
                     borderRadius: '8px',
                     boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
                     margin: '0 auto',
-                    display: 'block',
+                    display: activeImage?.img ? 'block' : 'none',
                     cursor: manualAddActive ? 'crosshair' : 'default',
                   }}
                 />
@@ -935,17 +977,29 @@ export const MosaicStudio: React.FC = () => {
               <>
                 <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)' }} />
                 <div>
-                  <button
-                    onClick={() => setManualAddActive((v) => !v)}
-                    className={manualAddActive ? 'btn-naver' : 'btn-secondary'}
-                    style={{ width: '100%', justifyContent: 'center' }}
-                  >
-                    <Hand size={16} />
-                    {manualAddActive ? '얼굴 직접 추가 중 (사진을 눌러 추가)' : '얼굴 직접 추가'}
-                  </button>
+                  <div style={{ display: 'flex', gap: '8px' }}>
+                    <button
+                      onClick={() => setManualAddActive((v) => !v)}
+                      className={manualAddActive ? 'btn-naver' : 'btn-secondary'}
+                      style={{ flex: 1, justifyContent: 'center' }}
+                    >
+                      <Hand size={16} />
+                      {manualAddActive ? '얼굴 직접 추가 중 (사진을 눌러 추가)' : '얼굴 직접 추가'}
+                    </button>
+                    {(activeImage?.history.length ?? 0) > 0 && (
+                      <button
+                        onClick={handleUndoManualFace}
+                        className="btn-secondary"
+                        title="방금 추가/제거한 것 되돌리기"
+                        style={{ flex: '0 0 auto', justifyContent: 'center', padding: '10px 14px' }}
+                      >
+                        <Undo2 size={16} />
+                      </button>
+                    )}
+                  </div>
                   <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: '6px' }}>
                     자동으로 못 찾은 얼굴이 있으면 켜고 사진에서 그 자리를 눌러주세요. 이미 놓인 자리를 다시 누르면
-                    지워져요.
+                    지워져요. 잘못 눌렀으면 옆의 되돌리기 버튼으로 한 단계씩 취소할 수 있어요.
                   </p>
                 </div>
                 {manualAddActive && (
