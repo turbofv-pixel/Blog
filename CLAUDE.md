@@ -22,6 +22,30 @@ the `# ` H1 with a greeting line like "안녕하세요 대왕토끼입니다~ �
 content. Applies to new posts going forward; existing posts don't need to be retrofitted
 unless asked.
 
+## Parenting post media: the user processes it themselves now, via MosaicStudio
+
+Earlier posts had Claude do face-detection + bunny-sticker processing directly (Python
+scripts in the scratchpad, see the `siheung-breathing-playground` / `yongin-suji-eco-park`
+git history). That workflow is retired for new parenting posts. Now:
+
+1. The user uploads raw photos/videos into the in-app **MosaicStudio** tool
+   (`src/components/MosaicStudio.tsx`) from their own device — never into this repo.
+2. MosaicStudio blurs faces client-side (bunny sticker or pixelate mode) and, on download,
+   names the output `rabbit_<original-filename-without-extension>.<ext>` (`.png` for photos,
+   `.webm`/`.mp4` for videos per `resultExt`) — **the original filename is preserved**, which
+   for a phone camera is a timestamp (e.g. `20260808_154453.jpg` → `rabbit_20260808_154453.png`).
+   That preserved timestamp is the "metadata" Claude should plan around: it's what tells you
+   shooting order/time-of-day across a batch without needing to invent descriptive slugs.
+3. The user uploads only the already-processed `rabbit_*` files to this repo. When writing a
+   post, reference that exact `rabbit_<original-name>.<ext>` filename in the Markdown image
+   path — don't rename to a descriptive slug. That way nothing needs renaming on the user's
+   end for the post to work once they upload.
+4. If raw (unprocessed, un-blurred) originals land in this repo anyway (e.g. an old habit of
+   uploading via the bare `/upload` GitHub URL, which drops files at the repo root instead of
+   a post's image folder), don't face-process them yourself — that's the user's job now. Just
+   flag it and remove the raw files from the repo once their content/timestamps have been
+   noted for post-writing purposes; raw un-blurred personal photos shouldn't sit in the repo.
+
 ## Post images: PNG, not SVG
 
 When generating illustrative images/diagrams for a blog post (charts, infographics, step
