@@ -57,10 +57,22 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   // since these still carry the original root-absolute "/images/..." path at this point (not
   // yet resolved against the app's base path), every one of them 404s. Regex matching never
   // touches the browser's resource loader, so nothing gets fetched just to build this list.
+  // Alt text (the "![이 부분](...)" in markdown) is pulled in here too, alongside src - the
+  // photo/video hasn't been uploaded yet in the "user mosaics it themselves, then uploads"
+  // workflow, so the filename alone doesn't say what's in each slot. Showing the caption next
+  // to it lets the mapping be read straight off this list instead of needing to keep a
+  // separate note from chat.
   const mediaSources = useMemo(() => {
     const rawHtml = marked.parse(editedContent) as string;
-    const images = Array.from(rawHtml.matchAll(/<img\b[^>]*\bsrc="([^"]+)"/g)).map((m) => ({ src: m[1], isVideo: false }));
-    const videos = Array.from(rawHtml.matchAll(/<video\b[^>]*\bsrc="([^"]+)"/g)).map((m) => ({ src: m[1], isVideo: true }));
+    const images = Array.from(rawHtml.matchAll(/<img\b[^>]*>/g)).map((m) => {
+      const srcMatch = m[0].match(/\bsrc="([^"]*)"/);
+      const altMatch = m[0].match(/\balt="([^"]*)"/);
+      return { src: srcMatch?.[1] || '', isVideo: false, alt: altMatch?.[1] || '' };
+    });
+    const videos = Array.from(rawHtml.matchAll(/<video\b[^>]*>/g)).map((m) => {
+      const srcMatch = m[0].match(/\bsrc="([^"]*)"/);
+      return { src: srcMatch?.[1] || '', isVideo: true, alt: '' };
+    });
     const seen = new Set<string>();
     return [...images, ...videos].filter((m) => m.src && !seen.has(m.src) && seen.add(m.src));
   }, [editedContent]);
@@ -576,7 +588,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             )}
 
             <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
-              {mediaSources.map(({ src, isVideo }) => (
+              {mediaSources.map(({ src, isVideo, alt }) => (
                 <div key={src} style={{ display: 'flex', alignItems: 'center', gap: '6px', flexWrap: 'wrap' }}>
                   {!isVideo && (
                     <button
@@ -597,8 +609,15 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
                     <Download size={14} />
                     다운로드
                   </a>
-                  <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', minWidth: '90px' }}>
-                    {src.split('/').pop()}
+                  <span style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: '90px' }}>
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
+                      {src.split('/').pop()}
+                    </span>
+                    {alt && (
+                      <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', opacity: 0.75 }}>
+                        {alt}
+                      </span>
+                    )}
                   </span>
                   {!isVideo && (
                     <input
