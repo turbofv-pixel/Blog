@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
-import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste } from 'lucide-react';
+import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste, Sparkles } from 'lucide-react';
 import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
+import { ANTHROPIC_API_KEY_STORAGE_KEY, generatePhotoCaption } from '../lib/anthropicCaption';
 
 // 사진(원본이든, 토끼 모자이크 스튜디오에서 처리해서 다운로드해둔 것이든)에 설명 메모를
 // 붙여서 이 저장소에 커밋한다. 모자이크/얼굴 인식 로직과는 완전히 무관 — 그냥 "파일 + 글자"를
@@ -32,13 +33,87 @@ export const GithubPhotoUploader: React.FC = () => {
   const [uploadedCount, setUploadedCount] = useState<number>(0);
   const [status, setStatus] = useState<string | null>(null);
 
+  // --- AI로 사진 설명 자동 생성 ---
+  const [anthropicKey, setAnthropicKey] = useState<string>(() => localStorage.getItem(ANTHROPIC_API_KEY_STORAGE_KEY) || '');
+  const [showAnthropicKey, setShowAnthropicKey] = useState<boolean>(false);
+  const [aiGeneratingIds, setAiGeneratingIds] = useState<Set<string>>(new Set());
+  const [aiStatus, setAiStatus] = useState<string | null>(null);
+
+  const handleAnthropicKeyChange = (value: string) => {
+    setAnthropicKey(value);
+    localStorage.setItem(ANTHROPIC_API_KEY_STORAGE_KEY, value);
+  };
+
+  const handleClearAnthropicKey = () => {
+    setAnthropicKey('');
+    localStorage.removeItem(ANTHROPIC_API_KEY_STORAGE_KEY);
+  };
+
+  // 한 장 설명 생성 — 성공하면 그 항목의 caption을 채우고 true, 실패하면 aiStatus에 에러를
+  // 남기고 false를 반환한다 (여러 장 순회할 때 실패 개수를 세는 데 씀).
+  const generateCaptionFor = async (id: string, file: File, key: string): Promise<boolean> => {
+    setAiGeneratingIds((prev) => new Set(prev).add(id));
+    try {
+      const caption = await generatePhotoCaption(file, key);
+      setItems((prev) => prev.map((it) => (it.id === id ? { ...it, caption } : it)));
+      return true;
+    } catch (err: any) {
+      setAiStatus(`❌ ${file.name} 설명 생성 실패: ${err.message || err}`);
+      return false;
+    } finally {
+      setAiGeneratingIds((prev) => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+    }
+  };
+
+  const handleGenerateOneCaption = (id: string, file: File) => {
+    const key = anthropicKey.trim();
+    if (!key) {
+      setAiStatus('❌ Anthropic API 키를 먼저 입력해주세요.');
+      return;
+    }
+    setAiStatus(null);
+    generateCaptionFor(id, file, key);
+  };
+
+  const handleGenerateAllCaptions = async (targetItems: UploadItem[]) => {
+    const key = anthropicKey.trim();
+    if (!key) {
+      setAiStatus('❌ Anthropic API 키를 먼저 입력해주세요.');
+      return;
+    }
+    if (targetItems.length === 0) return;
+    setAiStatus(null);
+    let fails = 0;
+    for (const it of targetItems) {
+      setAiStatus(`AI가 사진을 분석하는 중... (${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name}`);
+      // eslint-disable-next-line no-await-in-loop
+      const ok = await generateCaptionFor(it.id, it.file, key);
+      if (!ok) fails++;
+    }
+    setAiStatus(
+      fails === 0
+        ? `✨ 사진 ${targetItems.length}장 설명 자동 생성 완료! 내용 확인하고 필요하면 수정해주세요.`
+        : `⚠️ ${targetItems.length - fails}장 성공, ${fails}장 실패했어요.`
+    );
+  };
+
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     items.forEach((it) => URL.revokeObjectURL(it.objectUrl));
-    setItems(files.map((f) => ({ id: uid(), file: f, objectUrl: URL.createObjectURL(f), caption: '' })));
+    const newItems: UploadItem[] = files.map((f) => ({ id: uid(), file: f, objectUrl: URL.createObjectURL(f), caption: '' }));
+    setItems(newItems);
     setStatus(null);
+    setAiStatus(null);
     e.target.value = '';
+    // API 키가 이미 있으면 업로드하자마자 바로 분석 시작 — 따로 버튼을 안 눌러도 됨
+    if (anthropicKey.trim()) {
+      handleGenerateAllCaptions(newItems);
+    }
   };
 
   const handleCaptionChange = (id: string, caption: string) => {
@@ -199,6 +274,64 @@ export const GithubPhotoUploader: React.FC = () => {
             </label>
           </div>
 
+          <div
+            style={{
+              background: 'rgba(139, 92, 246, 0.08)',
+              border: '1px solid rgba(139, 92, 246, 0.25)',
+              borderRadius: '12px',
+              padding: '14px',
+              marginBottom: '20px',
+            }}
+          >
+            <span style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px', color: '#a78bfa' }}>
+              <Sparkles size={16} />
+              AI로 사진 설명 자동 생성
+            </span>
+            <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+              직접 타이핑하지 않아도, Claude(Anthropic) API가 사진을 보고 알아서 설명을 채워줘요. API 키를 넣어두면
+              다음부터 사진을 선택하는 순간 자동으로 분석이 시작돼요.
+            </p>
+            <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+              <input
+                type={showAnthropicKey ? 'text' : 'password'}
+                value={anthropicKey}
+                onChange={(e) => handleAnthropicKeyChange(e.target.value)}
+                placeholder="sk-ant-..."
+                style={{ flex: 1, minWidth: 0, background: '#090d16', color: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 10px', fontSize: '0.82rem' }}
+              />
+              <button onClick={() => setShowAnthropicKey((v) => !v)} className="btn-secondary" style={{ padding: '8px 10px', flex: '0 0 auto' }} title={showAnthropicKey ? '가리기' : '보기'}>
+                {showAnthropicKey ? <EyeOff size={14} /> : <Eye size={14} />}
+              </button>
+              {anthropicKey && (
+                <button onClick={handleClearAnthropicKey} className="btn-secondary" style={{ padding: '8px 10px', flex: '0 0 auto' }} title="저장된 키 지우기">
+                  <X size={14} />
+                </button>
+              )}
+            </div>
+            <button
+              onClick={() => handleGenerateAllCaptions(items)}
+              className="btn-secondary"
+              style={{ width: '100%', justifyContent: 'center', borderColor: 'rgba(139, 92, 246, 0.4)' }}
+              disabled={aiGeneratingIds.size > 0}
+            >
+              {aiGeneratingIds.size > 0 ? (
+                <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
+              ) : (
+                <Sparkles size={14} />
+              )}
+              전체 사진 AI로 설명 생성
+            </button>
+            {aiStatus && (
+              <p style={{ fontSize: '0.78rem', marginTop: '8px', color: aiStatus.startsWith('❌') ? '#f87171' : aiStatus.startsWith('⚠️') ? '#fbbf24' : '#03C75A' }}>
+                {aiStatus}
+              </p>
+            )}
+            <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '8px' }}>
+              키는 이 브라우저에만 저장되고 api.anthropic.com으로 직접 전송돼요. 분석에 쓴 만큼 Anthropic 계정에
+              요금이 청구되니(사진 한 장당 아주 소액), 사용량 한도를 걸어둔 키를 쓰는 걸 권장해요.
+            </p>
+          </div>
+
           <div style={{ display: 'flex', flexDirection: 'column', gap: '6px', marginBottom: '20px' }}>
             <textarea
               value={bulkPasteText}
@@ -236,23 +369,39 @@ export const GithubPhotoUploader: React.FC = () => {
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {it.file.name}
                   </div>
-                  <textarea
-                    value={it.caption}
-                    onChange={(e) => handleCaptionChange(it.id, e.target.value)}
-                    placeholder="이 사진 설명 (예: 우산 쓰고 걷는 아이랑 엄마)"
-                    rows={1}
-                    style={{
-                      width: '100%',
-                      background: '#090d16',
-                      color: '#f8fafc',
-                      border: '1px solid var(--border-color)',
-                      borderRadius: '6px',
-                      padding: '6px 8px',
-                      fontSize: '0.82rem',
-                      resize: 'vertical',
-                      fontFamily: 'inherit',
-                    }}
-                  />
+                  <div style={{ display: 'flex', gap: '6px' }}>
+                    <textarea
+                      value={it.caption}
+                      onChange={(e) => handleCaptionChange(it.id, e.target.value)}
+                      placeholder={aiGeneratingIds.has(it.id) ? 'AI가 사진을 분석하는 중...' : '이 사진 설명 (예: 우산 쓰고 걷는 아이랑 엄마)'}
+                      rows={1}
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        background: '#090d16',
+                        color: '#f8fafc',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '6px',
+                        padding: '6px 8px',
+                        fontSize: '0.82rem',
+                        resize: 'vertical',
+                        fontFamily: 'inherit',
+                      }}
+                    />
+                    <button
+                      onClick={() => handleGenerateOneCaption(it.id, it.file)}
+                      className="btn-secondary"
+                      title="이 사진 AI로 설명 생성"
+                      style={{ padding: '6px 8px', flex: '0 0 auto' }}
+                      disabled={aiGeneratingIds.has(it.id)}
+                    >
+                      {aiGeneratingIds.has(it.id) ? (
+                        <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
+                      ) : (
+                        <Sparkles size={14} color="#a78bfa" />
+                      )}
+                    </button>
+                  </div>
                 </div>
                 <button onClick={() => handleRemoveItem(it.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0 }}>
                   <X size={16} />
