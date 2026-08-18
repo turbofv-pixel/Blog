@@ -99,6 +99,41 @@ function loadImageEl(src: string): Promise<HTMLImageElement> {
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
+// 얼굴 인식이 멈춰버리는 경우(모바일 브라우저에서 큰 사진을 여러 장 연달아 돌리면 WebGL
+// 컨텍스트가 맛이 가는지, 에러도 안 던지고 그냥 promise가 영영 안 끝나는 케이스가 있었음)를
+// 대비해서, 한 장당 이 시간을 넘기면 "얼굴 0개"로 치고 다음 사진으로 넘어가게 강제한다.
+// 이게 없으면 배치 처리 중 한 장에서 멈추는 순간 뒤에 남은 사진들이 전부 영원히 "대기중"으로
+// 멈춰버린다.
+const DETECT_TIMEOUT_MS = 15000;
+
+function withTimeout<T>(promise: Promise<T>, ms: number, fallback: T): Promise<T> {
+  return new Promise((resolve) => {
+    let settled = false;
+    const timer = setTimeout(() => {
+      if (!settled) {
+        settled = true;
+        resolve(fallback);
+      }
+    }, ms);
+    promise.then(
+      (v) => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(v);
+        }
+      },
+      () => {
+        if (!settled) {
+          settled = true;
+          clearTimeout(timer);
+          resolve(fallback);
+        }
+      }
+    );
+  });
+}
+
 async function detectFacesIn(
   el: HTMLImageElement | HTMLVideoElement,
   opts: { inputSize: number; scoreThreshold: number }
@@ -187,7 +222,11 @@ function renderToDataUrl(
   const full = document.createElement('canvas');
   renderFacesToCanvas(full, img, faces, mode, pixelSize, bunny);
   if (!maxDim || (full.width <= maxDim && full.height <= maxDim)) {
-    return full.toDataURL('image/png');
+    // PNG here was lossless - for a real camera photo (already JPEG-compressed, lots of fine
+    // detail/noise) that's several times the original file size. JPEG at high quality keeps
+    // it visually indistinguishable from the sticker/pixelate result while landing close to
+    // what the original photo weighed.
+    return full.toDataURL('image/jpeg', 0.92);
   }
   const scale = maxDim / Math.max(full.width, full.height);
   const thumb = document.createElement('canvas');
@@ -416,7 +455,7 @@ export const MosaicStudio: React.FC = () => {
       const img = await loadImageEl(objectUrl);
       let rawFaces: Omit<DetectedFace, 'id' | 'source'>[] = [];
       try {
-        rawFaces = await detectFacesIn(img, IMAGE_DETECT_OPTS);
+        rawFaces = await withTimeout(detectFacesIn(img, IMAGE_DETECT_OPTS), DETECT_TIMEOUT_MS, []);
       } catch {
         // 모델이 없으면 얼굴 0개로 남기고 계속 (사용자가 수동 추가 가능)
       }
@@ -677,14 +716,14 @@ export const MosaicStudio: React.FC = () => {
   const handleDownloadActiveImage = () => {
     if (!activeImage?.img) return;
     const dataUrl = renderToDataUrl(activeImage.img, activeImage.faces, mode, pixelSize, bunnyRef.current);
-    downloadDataUrl(dataUrl, `rabbit_${activeImage.file.name.replace(/\.[^.]+$/, '')}.png`);
+    downloadDataUrl(dataUrl, `rabbit_${activeImage.file.name.replace(/\.[^.]+$/, '')}.jpg`);
   };
 
   const handleDownloadAllImages = async () => {
     for (const item of images) {
       if (!item.img) continue;
       const dataUrl = renderToDataUrl(item.img, item.faces, mode, pixelSize, bunnyRef.current);
-      downloadDataUrl(dataUrl, `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.png`);
+      downloadDataUrl(dataUrl, `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.jpg`);
       // 브라우저가 "여러 파일 다운로드 허용" 팝업을 안 띄우고 순서대로 받게 살짝 텀을 둔다
       await new Promise((r) => setTimeout(r, 350));
     }
