@@ -28,14 +28,16 @@ async function getCaptioner(onProgress?: (p: ModelLoadProgress) => void) {
         env.backends.onnx.wasm.numThreads = 1;
       }
       return pipeline('image-to-text', MODEL_ID, {
-        // transformers.js가 기기별로 자동으로 고르는 기본 dtype이 이 모델 저장소의 4비트
-        // 블록 양자화(q4) 디코더 파일과 안 맞아서 "Missing required scale ...
-        // DequantizeLinear" 에러로 세션 생성 자체가 실패하는 게 실기기에서 확인됨. 그렇다고
-        // fp32(비양자화)로 바꾸니 이번엔 모델이 너무 커서 모바일 브라우저 탭이 메모리 부족으로
-        // 죽는 문제("Aw, Snap!")가 생김. q4의 블록 단위 양자화(MatMulNBits)와 달리 q8은 더
-        // 단순한 방식(QuantizeLinear/DequantizeLinear + MatMulInteger)이라 그 버그를 피하면서도
-        // fp32보다 용량/메모리가 훨씬 작다 — 용량과 안정성의 절충점.
-        dtype: 'q8',
+        // transformers.js가 wasm 기기에서 dtype을 안 정해주면(또는 'q8'로 명시해도) 기본값이
+        // 'q8'인데, 이건 파일명 접미사 "_quantized"로 매핑된다 — 그런데 이 저장소의
+        // decoder_model_merged_quantized.onnx 파일 자체가 깨져있어서("Missing required
+        // scale ... DequantizeLinear") dtype을 뭘로 줘도 'q8'인 이상 항상 같은 파일을 불러와
+        // 매번 똑같이 실패했다(실기기에서 dtype:'q8'로도 이전과 동일한 에러 재현 확인).
+        // 접미사 없는 fp32(decoder_model_merged.onnx)는 정상 로드되지만, 인코더+디코더 둘 다
+        // fp32로 하면 용량이 너무 커서 모바일 탭이 메모리 부족으로 죽는 문제도 확인됨
+        // ("Aw, Snap!"). 그래서 깨진 파일이 있는 디코더만 fp32(안전한 파일)로 두고, 문제없는
+        // 인코더(ViT, 태그된 임베딩이 없어 양자화 버그와 무관)는 q8로 줄여서 절충한다.
+        dtype: { encoder_model: 'q8', decoder_model_merged: 'fp32' },
         progress_callback: onProgress
           ? (p: any) => onProgress({ status: p.status, file: p.file, progress: p.progress })
           : undefined,
