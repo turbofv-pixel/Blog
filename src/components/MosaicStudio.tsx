@@ -738,7 +738,7 @@ export const MosaicStudio: React.FC = () => {
   const buildCaptionsText = () =>
     images
       .map((it, i) => {
-        const filename = `rabbit_${it.file.name.replace(/\.[^.]+$/, '')}.png`;
+        const filename = `rabbit_${it.file.name.replace(/\.[^.]+$/, '')}.jpg`;
         const note = it.caption.trim() || '(설명 없음)';
         return `${i + 1}. ${filename} — ${note}`;
       })
@@ -794,7 +794,7 @@ export const MosaicStudio: React.FC = () => {
 
     let ok = 0;
     for (const item of readyItems) {
-      const filename = `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.png`;
+      const filename = `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.jpg`;
       setGithubStatus(`업로드 중... (${ok + 1}/${readyItems.length}) ${filename}`);
       try {
         const dataUrl = renderToDataUrl(item.img as HTMLImageElement, item.faces, mode, pixelSize, bunnyRef.current);
