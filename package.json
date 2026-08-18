@@ -11,6 +11,7 @@
     "publish:naver": "node automation/publish-to-naver.mjs"
   },
   "dependencies": {
+    "@huggingface/transformers": "^4.2.0",
     "lucide-react": "^0.344.0",
     "marked": "^12.0.1",
     "react": "^18.2.0",

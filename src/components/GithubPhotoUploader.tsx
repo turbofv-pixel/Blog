@@ -2,6 +2,9 @@ import React, { useState } from 'react';
 import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste, Sparkles } from 'lucide-react';
 import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
 import { ANTHROPIC_API_KEY_STORAGE_KEY, generatePhotoCaption } from '../lib/anthropicCaption';
+import { generateLocalCaption } from '../lib/localCaption';
+
+type CaptionMode = 'local' | 'anthropic';
 
 // 사진(원본이든, 토끼 모자이크 스튜디오에서 처리해서 다운로드해둔 것이든)에 설명 메모를
 // 붙여서 이 저장소에 커밋한다. 모자이크/얼굴 인식 로직과는 완전히 무관 — 그냥 "파일 + 글자"를
@@ -34,6 +37,9 @@ export const GithubPhotoUploader: React.FC = () => {
   const [status, setStatus] = useState<string | null>(null);
 
   // --- AI로 사진 설명 자동 생성 ---
+  // 기본은 'local' — 브라우저 안에서 완전 무료로 돌아가는 모델을 쓴다. API 키가 있고 더 정확한
+  // 한국어 설명이 필요하면 'anthropic'으로 바꿔서 쓸 수 있게 옵션으로 남겨둔다.
+  const [captionMode, setCaptionMode] = useState<CaptionMode>('local');
   const [anthropicKey, setAnthropicKey] = useState<string>(() => localStorage.getItem(ANTHROPIC_API_KEY_STORAGE_KEY) || '');
   const [showAnthropicKey, setShowAnthropicKey] = useState<boolean>(false);
   const [aiGeneratingIds, setAiGeneratingIds] = useState<Set<string>>(new Set());
@@ -51,10 +57,17 @@ export const GithubPhotoUploader: React.FC = () => {
 
   // 한 장 설명 생성 — 성공하면 그 항목의 caption을 채우고 true, 실패하면 aiStatus에 에러를
   // 남기고 false를 반환한다 (여러 장 순회할 때 실패 개수를 세는 데 씀).
-  const generateCaptionFor = async (id: string, file: File, key: string): Promise<boolean> => {
+  // mode='local'이면 브라우저 안에서 무료로(키 불필요), mode='anthropic'이면 API 키로 처리한다.
+  const generateCaptionFor = async (id: string, file: File, mode: CaptionMode, key: string): Promise<boolean> => {
     setAiGeneratingIds((prev) => new Set(prev).add(id));
     try {
-      const caption = await generatePhotoCaption(file, key);
+      const caption =
+        mode === 'local'
+          ? await generateLocalCaption(file, (p) => {
+              const pct = typeof p.progress === 'number' ? ` ${Math.round(p.progress)}%` : '';
+              setAiStatus(`모델 준비 중(최초 1회만, 이후엔 인터넷 없이도 즉시 실행)... ${p.file || p.status}${pct}`);
+            })
+          : await generatePhotoCaption(file, key);
       setItems((prev) => prev.map((it) => (it.id === id ? { ...it, caption } : it)));
       return true;
     } catch (err: any) {
@@ -70,28 +83,40 @@ export const GithubPhotoUploader: React.FC = () => {
   };
 
   const handleGenerateOneCaption = (id: string, file: File) => {
-    const key = anthropicKey.trim();
-    if (!key) {
-      setAiStatus('❌ Anthropic API 키를 먼저 입력해주세요.');
-      return;
+    if (captionMode === 'anthropic') {
+      const key = anthropicKey.trim();
+      if (!key) {
+        setAiStatus('❌ Anthropic API 키를 먼저 입력해주세요.');
+        return;
+      }
+      setAiStatus(null);
+      generateCaptionFor(id, file, 'anthropic', key);
+    } else {
+      setAiStatus(null);
+      generateCaptionFor(id, file, 'local', '');
     }
-    setAiStatus(null);
-    generateCaptionFor(id, file, key);
   };
 
   const handleGenerateAllCaptions = async (targetItems: UploadItem[]) => {
-    const key = anthropicKey.trim();
-    if (!key) {
-      setAiStatus('❌ Anthropic API 키를 먼저 입력해주세요.');
-      return;
+    let key = '';
+    if (captionMode === 'anthropic') {
+      key = anthropicKey.trim();
+      if (!key) {
+        setAiStatus('❌ Anthropic API 키를 먼저 입력해주세요.');
+        return;
+      }
     }
     if (targetItems.length === 0) return;
     setAiStatus(null);
     let fails = 0;
     for (const it of targetItems) {
-      setAiStatus(`AI가 사진을 분석하는 중... (${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name}`);
+      setAiStatus(
+        captionMode === 'local'
+          ? `(${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name} 분석 준비 중...`
+          : `AI가 사진을 분석하는 중... (${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name}`
+      );
       // eslint-disable-next-line no-await-in-loop
-      const ok = await generateCaptionFor(it.id, it.file, key);
+      const ok = await generateCaptionFor(it.id, it.file, captionMode, key);
       if (!ok) fails++;
     }
     setAiStatus(
@@ -110,8 +135,9 @@ export const GithubPhotoUploader: React.FC = () => {
     setStatus(null);
     setAiStatus(null);
     e.target.value = '';
-    // API 키가 이미 있으면 업로드하자마자 바로 분석 시작 — 따로 버튼을 안 눌러도 됨
-    if (anthropicKey.trim()) {
+    // 로컬 모드는 키가 필요 없으니 사진 선택 즉시 자동 분석 시작. Anthropic 모드는 키가
+    // 저장돼 있을 때만 자동 시작.
+    if (captionMode === 'local' || anthropicKey.trim()) {
       handleGenerateAllCaptions(newItems);
     }
   };
@@ -287,32 +313,68 @@ export const GithubPhotoUploader: React.FC = () => {
               <Sparkles size={16} />
               AI로 사진 설명 자동 생성
             </span>
-            <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
-              직접 타이핑하지 않아도, Claude(Anthropic) API가 사진을 보고 알아서 설명을 채워줘요. API 키를 넣어두면
-              다음부터 사진을 선택하는 순간 자동으로 분석이 시작돼요.
-            </p>
+
             <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
-              <input
-                type={showAnthropicKey ? 'text' : 'password'}
-                value={anthropicKey}
-                onChange={(e) => handleAnthropicKeyChange(e.target.value)}
-                placeholder="sk-ant-..."
-                style={{ flex: 1, minWidth: 0, background: '#090d16', color: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 10px', fontSize: '0.82rem' }}
-              />
-              <button onClick={() => setShowAnthropicKey((v) => !v)} className="btn-secondary" style={{ padding: '8px 10px', flex: '0 0 auto' }} title={showAnthropicKey ? '가리기' : '보기'}>
-                {showAnthropicKey ? <EyeOff size={14} /> : <Eye size={14} />}
+              <button
+                onClick={() => {
+                  setCaptionMode('local');
+                  setAiStatus(null);
+                }}
+                className={captionMode === 'local' ? 'btn-naver' : 'btn-secondary'}
+                style={{ flex: 1, justifyContent: 'center', fontSize: '0.78rem', padding: '8px 6px' }}
+              >
+                무료 (내 브라우저에서 처리)
               </button>
-              {anthropicKey && (
-                <button onClick={handleClearAnthropicKey} className="btn-secondary" style={{ padding: '8px 10px', flex: '0 0 auto' }} title="저장된 키 지우기">
-                  <X size={14} />
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  setCaptionMode('anthropic');
+                  setAiStatus(null);
+                }}
+                className={captionMode === 'anthropic' ? 'btn-naver' : 'btn-secondary'}
+                style={{ flex: 1, justifyContent: 'center', fontSize: '0.78rem', padding: '8px 6px' }}
+              >
+                Claude API (유료, 고품질)
+              </button>
             </div>
+
+            {captionMode === 'local' ? (
+              <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                API 키 없이, 사진을 어디에도 전송하지 않고 브라우저 안에서 완전 무료로 설명을 생성해요. 처음 한 번만
+                모델 파일을 내려받고(수십MB, 인터넷 연결 필요) 그 다음부터는 브라우저에 캐시돼서 오프라인에서도 바로
+                동작해요. 다만 이 모델은 <strong>영어로만</strong> 설명을 만들어요 — 그래도 Claude가 그 영어 설명만
+                읽고 한국어로 글을 쓰는 데는 전혀 문제없어요.
+              </p>
+            ) : (
+              <>
+                <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                  Claude(Anthropic) API가 사진을 직접 보고 더 정확한 한국어 설명을 만들어줘요. API 키를 넣어두면
+                  다음부터 사진을 선택하는 순간 자동으로 분석이 시작돼요.
+                </p>
+                <div style={{ display: 'flex', gap: '6px', marginBottom: '10px' }}>
+                  <input
+                    type={showAnthropicKey ? 'text' : 'password'}
+                    value={anthropicKey}
+                    onChange={(e) => handleAnthropicKeyChange(e.target.value)}
+                    placeholder="sk-ant-..."
+                    style={{ flex: 1, minWidth: 0, background: '#090d16', color: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 10px', fontSize: '0.82rem' }}
+                  />
+                  <button onClick={() => setShowAnthropicKey((v) => !v)} className="btn-secondary" style={{ padding: '8px 10px', flex: '0 0 auto' }} title={showAnthropicKey ? '가리기' : '보기'}>
+                    {showAnthropicKey ? <EyeOff size={14} /> : <Eye size={14} />}
+                  </button>
+                  {anthropicKey && (
+                    <button onClick={handleClearAnthropicKey} className="btn-secondary" style={{ padding: '8px 10px', flex: '0 0 auto' }} title="저장된 키 지우기">
+                      <X size={14} />
+                    </button>
+                  )}
+                </div>
+              </>
+            )}
+
             <button
               onClick={() => handleGenerateAllCaptions(items)}
               className="btn-secondary"
               style={{ width: '100%', justifyContent: 'center', borderColor: 'rgba(139, 92, 246, 0.4)' }}
-              disabled={aiGeneratingIds.size > 0}
+              disabled={aiGeneratingIds.size > 0 || (captionMode === 'anthropic' && !anthropicKey.trim())}
             >
               {aiGeneratingIds.size > 0 ? (
                 <RefreshCw size={14} style={{ animation: 'spin 1s linear infinite' }} />
@@ -327,8 +389,9 @@ export const GithubPhotoUploader: React.FC = () => {
               </p>
             )}
             <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '8px' }}>
-              키는 이 브라우저에만 저장되고 api.anthropic.com으로 직접 전송돼요. 분석에 쓴 만큼 Anthropic 계정에
-              요금이 청구되니(사진 한 장당 아주 소액), 사용량 한도를 걸어둔 키를 쓰는 걸 권장해요.
+              {captionMode === 'local'
+                ? '이 사진들은 API로 전송되지 않고 이 기기 안에서만 처리돼요.'
+                : '키는 이 브라우저에만 저장되고 api.anthropic.com으로 직접 전송돼요. 분석에 쓴 만큼 Anthropic 계정에 요금이 청구되니(사진 한 장당 아주 소액), 사용량 한도를 걸어둔 키를 쓰는 걸 권장해요.'}
             </p>
           </div>
 
