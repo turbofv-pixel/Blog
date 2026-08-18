@@ -11,6 +11,9 @@ import {
   Hand,
   X,
   Undo2,
+  Github,
+  Eye,
+  EyeOff,
 } from 'lucide-react';
 
 declare global {
@@ -40,6 +43,7 @@ interface ImageItem {
   history: DetectedFace[][]; // "얼굴 직접 추가"로 손댈 때마다 직전 상태를 쌓아두는 되돌리기 스택
   previewUrl: string | null;
   status: 'pending' | 'detecting' | 'done' | 'error';
+  caption: string; // 사진 내용을 짧게 적어두는 메모 — Claude가 사진을 직접 안 보고도 이 텍스트만으로 글을 쓸 수 있게
 }
 
 const MAX_UNDO_HISTORY = 20;
@@ -201,6 +205,69 @@ function downloadDataUrl(dataUrl: string, filename: string) {
   link.click();
 }
 
+// --- GitHub Contents API로 브라우저에서 바로 커밋하기 ---
+// 이 리포 자체(turbofv-pixel/Blog)에, 사용자가 넣어준 개인 액세스 토큰으로 직접 파일을
+// 만든다. 별도 백엔드 서버 없이 정적 사이트에서 돌아가는 앱이라 토큰은 사용자 브라우저의
+// localStorage에만 저장되고, 요청은 브라우저에서 api.github.com으로 바로 나간다 — 이
+// 토큰은 사실상 비밀번호와 같으니, 저장소 하나에만 쓰기 권한을 준 fine-grained 토큰을
+// 쓰길 권장한다(README에도 명시).
+const GITHUB_OWNER = 'turbofv-pixel';
+const GITHUB_REPO = 'Blog';
+const GITHUB_TOKEN_KEY = 'mosaicGithubToken';
+const GITHUB_BRANCH_KEY = 'mosaicGithubBranch';
+
+function dataUrlToBase64(dataUrl: string): string {
+  const idx = dataUrl.indexOf(',');
+  return idx >= 0 ? dataUrl.slice(idx + 1) : dataUrl;
+}
+
+// 유니코드(한글 등)가 섞인 문자열을 base64로 인코딩 — btoa는 라틴-1 범위만 받아들이므로
+// UTF-8 바이트로 먼저 이스케이프한 뒤 인코딩하는 표준 트릭을 쓴다.
+function utf8ToBase64(text: string): string {
+  return btoa(unescape(encodeURIComponent(text)));
+}
+
+async function githubPutFile(path: string, contentBase64: string, message: string, token: string, branch: string): Promise<void> {
+  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`;
+
+  // 이미 있는 파일이면 sha를 같이 보내야 덮어쓰기가 되므로, 먼저 조회해본다.
+  let sha: string | undefined;
+  try {
+    const getRes = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (getRes.ok) {
+      const data = await getRes.json();
+      sha = data.sha;
+    }
+  } catch {
+    // 조회 실패는 무시 — 새 파일이라고 가정하고 진행
+  }
+
+  const res = await fetch(url, {
+    method: 'PUT',
+    headers: {
+      Authorization: `Bearer ${token}`,
+      Accept: 'application/vnd.github+json',
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({ message, content: contentBase64, branch, ...(sha ? { sha } : {}) }),
+  });
+  if (!res.ok) {
+    let detail = '';
+    try {
+      const body = await res.json();
+      detail = body.message || '';
+    } catch {
+      // 응답이 JSON이 아니면 그냥 상태 코드만 사용
+    }
+    throw new Error(`${res.status} ${detail || res.statusText}`);
+  }
+}
+
 export const MosaicStudio: React.FC = () => {
   const [mediaKind, setMediaKind] = useState<MediaKind | null>(null);
   const [mode, setMode] = useState<MosaicMode>('rabbit');
@@ -217,6 +284,16 @@ export const MosaicStudio: React.FC = () => {
   const [activeImageIndex, setActiveImageIndex] = useState<number>(0);
   const [manualAddActive, setManualAddActive] = useState<boolean>(false);
   const [manualSizePct, setManualSizePct] = useState<number>(16); // 이미지 짧은 변 대비 %
+  const [captionsCopied, setCaptionsCopied] = useState<boolean>(false);
+
+  // --- GitHub에 바로 업로드 ---
+  const [githubToken, setGithubToken] = useState<string>(() => localStorage.getItem(GITHUB_TOKEN_KEY) || '');
+  const [githubBranch, setGithubBranch] = useState<string>(() => localStorage.getItem(GITHUB_BRANCH_KEY) || 'master');
+  const [githubFolder, setGithubFolder] = useState<string>('');
+  const [githubShowToken, setGithubShowToken] = useState<boolean>(false);
+  const [githubUploading, setGithubUploading] = useState<boolean>(false);
+  const [githubStatus, setGithubStatus] = useState<string | null>(null);
+  const [githubUploadedCount, setGithubUploadedCount] = useState<number>(0);
 
   // --- 영상(여러 개 가능, 순서대로 하나씩 처리) 상태 ---
   const [videoItems, setVideoItems] = useState<VideoItem[]>([]);
@@ -306,6 +383,7 @@ export const MosaicStudio: React.FC = () => {
       history: [],
       previewUrl: null,
       status: 'pending',
+      caption: '',
     }));
     setImages(items);
     setActiveImageIndex(0);
@@ -610,6 +688,108 @@ export const MosaicStudio: React.FC = () => {
       // 브라우저가 "여러 파일 다운로드 허용" 팝업을 안 띄우고 순서대로 받게 살짝 텀을 둔다
       await new Promise((r) => setTimeout(r, 350));
     }
+  };
+
+  const handleCaptionChange = (id: string, caption: string) => {
+    setImages((prev) => prev.map((it) => (it.id === id ? { ...it, caption } : it)));
+  };
+
+  // 사진마다 적어둔 설명을 한 번에 모아서 텍스트로 만든다 — Claude가 사진을 직접 안 보고
+  // 이 텍스트만으로 글을 쓸 수 있게, 채팅창에 붙여넣기 좋은 형태로.
+  const buildCaptionsText = () =>
+    images
+      .map((it, i) => {
+        const filename = `rabbit_${it.file.name.replace(/\.[^.]+$/, '')}.png`;
+        const note = it.caption.trim() || '(설명 없음)';
+        return `${i + 1}. ${filename} — ${note}`;
+      })
+      .join('\n');
+
+  const handleCopyCaptions = async () => {
+    const text = buildCaptionsText();
+    try {
+      await navigator.clipboard.writeText(text);
+      setCaptionsCopied(true);
+      setTimeout(() => setCaptionsCopied(false), 2000);
+    } catch {
+      // 클립보드 API를 못 쓰는 브라우저면 그냥 알림으로 보여준다
+      window.prompt('아래 텍스트를 복사해서 붙여넣어주세요:', text);
+    }
+  };
+
+  useEffect(() => {
+    localStorage.setItem(GITHUB_TOKEN_KEY, githubToken);
+  }, [githubToken]);
+
+  useEffect(() => {
+    localStorage.setItem(GITHUB_BRANCH_KEY, githubBranch);
+  }, [githubBranch]);
+
+  const handleClearGithubToken = () => {
+    setGithubToken('');
+    localStorage.removeItem(GITHUB_TOKEN_KEY);
+  };
+
+  // 처리된 사진(+설명 메모)을 이 저장소의 public/images/<폴더>/ 에 바로 커밋한다.
+  // 다운로드→재업로드 없이 여기서 끝 — Claude는 그 폴더를 바로 읽어서 글을 쓸 수 있다.
+  const handleUploadToGithub = async () => {
+    const token = githubToken.trim();
+    const folder = githubFolder.trim().replace(/^\/+|\/+$/g, '');
+    if (!token) {
+      setGithubStatus('❌ GitHub 토큰을 먼저 입력해주세요.');
+      return;
+    }
+    if (!folder) {
+      setGithubStatus('❌ 저장할 폴더 이름을 입력해주세요 (예: ansan-family-outing-2).');
+      return;
+    }
+    const readyItems = images.filter((it) => it.img);
+    if (readyItems.length === 0) {
+      setGithubStatus('❌ 아직 처리된 사진이 없어요.');
+      return;
+    }
+
+    setGithubUploading(true);
+    setGithubUploadedCount(0);
+    setGithubStatus(null);
+
+    let ok = 0;
+    for (const item of readyItems) {
+      const filename = `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.png`;
+      setGithubStatus(`업로드 중... (${ok + 1}/${readyItems.length}) ${filename}`);
+      try {
+        const dataUrl = renderToDataUrl(item.img as HTMLImageElement, item.faces, mode, pixelSize, bunnyRef.current);
+        // eslint-disable-next-line no-await-in-loop
+        await githubPutFile(`public/images/${folder}/${filename}`, dataUrlToBase64(dataUrl), `사진 추가: ${filename}`, token, githubBranch);
+        ok++;
+        setGithubUploadedCount(ok);
+      } catch (err: any) {
+        setGithubStatus(`❌ ${filename} 업로드 실패: ${err.message || err} — 토큰 권한/폴더명을 확인해주세요.`);
+        setGithubUploading(false);
+        return;
+      }
+    }
+
+    const captionsText = buildCaptionsText();
+    if (captionsText.trim()) {
+      try {
+        await githubPutFile(
+          `public/images/${folder}/captions.md`,
+          utf8ToBase64(captionsText),
+          '사진 설명 메모 추가',
+          token,
+          githubBranch
+        );
+      } catch {
+        // 캡션 업로드 실패는 치명적이지 않으니 조용히 넘어간다 (사진은 이미 다 올라갔음)
+      }
+    }
+
+    setGithubUploading(false);
+    setGithubStatus(
+      `✨ ${ok}장 GitHub에 업로드 완료! (public/images/${folder}/, "${githubBranch}" 브랜치) ` +
+        `이제 Claude한테 "${folder} 폴더 사진으로 글 써줘"라고 말해보세요.`
+    );
   };
 
   const handleRemoveImage = (id: string) => {
@@ -1036,6 +1216,35 @@ export const MosaicStudio: React.FC = () => {
               </div>
             )}
 
+            {mediaKind === 'image' && activeImage && (
+              <div>
+                <label style={{ display: 'block', fontWeight: 600, fontSize: '0.85rem', marginBottom: '8px' }}>
+                  이 사진 설명 메모
+                </label>
+                <textarea
+                  value={activeImage.caption}
+                  onChange={(e) => handleCaptionChange(activeImage.id, e.target.value)}
+                  placeholder="예: 우산 쓰고 걷는 아이랑 엄마, 뒤로 아파트 공사현장"
+                  rows={2}
+                  style={{
+                    width: '100%',
+                    background: '#090d16',
+                    color: '#f8fafc',
+                    border: '1px solid var(--border-color)',
+                    borderRadius: '8px',
+                    padding: '8px 10px',
+                    fontSize: '0.85rem',
+                    resize: 'vertical',
+                    fontFamily: 'inherit',
+                  }}
+                />
+                <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginTop: '4px' }}>
+                  뭐가 찍혔는지 짧게 적어두면, Claude한테 사진을 직접 안 보여줘도 이 설명만으로 글을 쓰게 할 수
+                  있어요.
+                </p>
+              </div>
+            )}
+
             {mediaKind === 'image' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
                 <button onClick={handleDownloadActiveImage} className="btn-naver" style={{ justifyContent: 'center' }}>
@@ -1048,7 +1257,128 @@ export const MosaicStudio: React.FC = () => {
                     전체 {images.length}장 한번에 다운로드
                   </button>
                 )}
+                <button onClick={handleCopyCaptions} className="btn-secondary" style={{ justifyContent: 'center' }}>
+                  <CheckCircle2 size={16} color={captionsCopied ? '#03C75A' : undefined} />
+                  {captionsCopied ? '설명 복사됨! Claude한테 붙여넣어주세요' : '사진 설명 전체 복사'}
+                </button>
               </div>
+            )}
+
+            {mediaKind === 'image' && (
+              <>
+                <hr style={{ border: 'none', borderTop: '1px solid var(--border-color)' }} />
+                <div>
+                  <span style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <Github size={16} />
+                    GitHub에 바로 올리기
+                  </span>
+                  <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
+                    다운로드·재업로드 없이 이 저장소에 바로 커밋해요. Claude는 그 폴더를 읽어서 글을 쓸 수 있어요.
+                  </p>
+
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>GitHub 토큰</label>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
+                    <input
+                      type={githubShowToken ? 'text' : 'password'}
+                      value={githubToken}
+                      onChange={(e) => setGithubToken(e.target.value)}
+                      placeholder="ghp_... 또는 github_pat_..."
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        background: '#090d16',
+                        color: '#f8fafc',
+                        border: '1px solid var(--border-color)',
+                        borderRadius: '8px',
+                        padding: '8px 10px',
+                        fontSize: '0.82rem',
+                      }}
+                    />
+                    <button
+                      onClick={() => setGithubShowToken((v) => !v)}
+                      className="btn-secondary"
+                      style={{ padding: '8px 10px', flex: '0 0 auto' }}
+                      title={githubShowToken ? '가리기' : '보기'}
+                    >
+                      {githubShowToken ? <EyeOff size={14} /> : <Eye size={14} />}
+                    </button>
+                    {githubToken && (
+                      <button onClick={handleClearGithubToken} className="btn-secondary" style={{ padding: '8px 10px', flex: '0 0 auto' }} title="저장된 토큰 지우기">
+                        <X size={14} />
+                      </button>
+                    )}
+                  </div>
+
+                  <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>저장할 폴더 이름</label>
+                  <input
+                    type="text"
+                    value={githubFolder}
+                    onChange={(e) => setGithubFolder(e.target.value)}
+                    placeholder="예: ansan-family-outing-2"
+                    style={{
+                      width: '100%',
+                      background: '#090d16',
+                      color: '#f8fafc',
+                      border: '1px solid var(--border-color)',
+                      borderRadius: '8px',
+                      padding: '8px 10px',
+                      fontSize: '0.82rem',
+                      marginBottom: '8px',
+                    }}
+                  />
+                  <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
+                    → <code>public/images/{githubFolder || '<폴더명>'}/</code> 에 저장돼요.
+                  </p>
+
+                  <button
+                    onClick={handleUploadToGithub}
+                    className="btn-naver"
+                    style={{ width: '100%', justifyContent: 'center' }}
+                    disabled={githubUploading}
+                  >
+                    {githubUploading ? (
+                      <>
+                        <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
+                        업로드 중... ({githubUploadedCount}/{images.filter((it) => it.img).length})
+                      </>
+                    ) : (
+                      <>
+                        <Github size={16} />
+                        GitHub에 업로드
+                      </>
+                    )}
+                  </button>
+
+                  {githubStatus && (
+                    <p style={{ fontSize: '0.78rem', marginTop: '8px', color: githubStatus.startsWith('❌') ? '#f87171' : '#03C75A' }}>
+                      {githubStatus}
+                    </p>
+                  )}
+
+                  <div
+                    style={{
+                      display: 'flex',
+                      alignItems: 'flex-start',
+                      gap: '6px',
+                      background: 'rgba(248,113,113,0.06)',
+                      border: '1px solid rgba(248,113,113,0.2)',
+                      borderRadius: '8px',
+                      padding: '10px',
+                      marginTop: '10px',
+                      fontSize: '0.74rem',
+                      color: '#94a3b8',
+                    }}
+                  >
+                    <AlertTriangle size={14} color="#f87171" style={{ flexShrink: 0, marginTop: '1px' }} />
+                    <span>
+                      토큰은 이 브라우저에만 저장되고 api.github.com으로 직접 전송돼요(다른 서버 안 거침). 그래도
+                      비밀번호처럼 다뤄주세요 — 이 저장소 하나에만, Contents 읽기/쓰기 권한만 준{' '}
+                      <strong>fine-grained 토큰</strong>을 만들어 쓰는 걸 권장해요. 공용 기기에서는 쓰고 나서 위 X
+                      버튼으로 지워주세요.
+                    </span>
+                  </div>
+                </div>
+              </>
             )}
             {mediaKind === 'video' && (
               <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
