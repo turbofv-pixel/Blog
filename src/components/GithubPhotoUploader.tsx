@@ -2,9 +2,14 @@ import React, { useState } from 'react';
 import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste } from 'lucide-react';
 import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
 
-// 이미 다른 곳(토끼 모자이크 스튜디오 등)에서 처리를 끝내고 다운로드해둔 사진들을, 여기서
-// 설명 메모와 함께 이 저장소에 커밋한다. 모자이크/얼굴 인식 로직과는 완전히 무관 — 그냥
-// "이미 완성된 파일 + 글자"를 GitHub에 올리는 도구다.
+// 사진(원본이든, 토끼 모자이크 스튜디오에서 처리해서 다운로드해둔 것이든)에 설명 메모를
+// 붙여서 이 저장소에 커밋한다. 모자이크/얼굴 인식 로직과는 완전히 무관 — 그냥 "파일 + 글자"를
+// GitHub에 올리는 도구다.
+//
+// 기본은 사진 자체는 업로드하지 않고 설명 메모(captions.md)만 커밋한다 — 얼굴이 그대로 보이는
+// 원본 사진을 미리 캡션 붙이기용으로 여기 올려도, 모자이크 처리 전까지는 저장소에 사진이 절대
+// 올라가지 않는다는 뜻. 나중에 모자이크 처리를 끝낸 뒤 "사진도 같이 올리기"를 켜고 다시
+// 올리면 그때 실제 파일이 커밋된다.
 
 interface UploadItem {
   id: string;
@@ -21,6 +26,7 @@ export const GithubPhotoUploader: React.FC = () => {
   const [token, setToken] = useState<string>(() => localStorage.getItem(GITHUB_TOKEN_KEY) || '');
   const [branch, setBranch] = useState<string>(() => localStorage.getItem(GITHUB_BRANCH_KEY) || 'master');
   const [folder, setFolder] = useState<string>('');
+  const [uploadPhotos, setUploadPhotos] = useState<boolean>(false);
   const [showToken, setShowToken] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
   const [uploadedCount, setUploadedCount] = useState<number>(0);
@@ -109,19 +115,21 @@ export const GithubPhotoUploader: React.FC = () => {
     setStatus(null);
 
     let ok = 0;
-    for (const item of items) {
-      setStatus(`업로드 중... (${ok + 1}/${items.length}) ${item.file.name}`);
-      try {
-        // eslint-disable-next-line no-await-in-loop
-        const base64 = await fileToBase64(item.file);
-        // eslint-disable-next-line no-await-in-loop
-        await githubPutFile(`public/images/${folderPath}/${item.file.name}`, base64, `사진 추가: ${item.file.name}`, tok, branch);
-        ok++;
-        setUploadedCount(ok);
-      } catch (err: any) {
-        setStatus(`❌ ${item.file.name} 업로드 실패: ${err.message || err} — 토큰 권한/폴더명을 확인해주세요.`);
-        setUploading(false);
-        return;
+    if (uploadPhotos) {
+      for (const item of items) {
+        setStatus(`업로드 중... (${ok + 1}/${items.length}) ${item.file.name}`);
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const base64 = await fileToBase64(item.file);
+          // eslint-disable-next-line no-await-in-loop
+          await githubPutFile(`public/images/${folderPath}/${item.file.name}`, base64, `사진 추가: ${item.file.name}`, tok, branch);
+          ok++;
+          setUploadedCount(ok);
+        } catch (err: any) {
+          setStatus(`❌ ${item.file.name} 업로드 실패: ${err.message || err} — 토큰 권한/폴더명을 확인해주세요.`);
+          setUploading(false);
+          return;
+        }
       }
     }
 
@@ -130,14 +138,19 @@ export const GithubPhotoUploader: React.FC = () => {
       await githubPutFile(`public/images/${folderPath}/captions.md`, utf8ToBase64(buildCaptionsText()), '사진 설명 메모 추가', tok, branch);
     } catch (err: any) {
       setUploading(false);
-      setStatus(`⚠️ 사진 ${ok}장은 올라갔지만 설명 메모 업로드는 실패했어요: ${err.message || err}`);
+      setStatus(
+        uploadPhotos
+          ? `⚠️ 사진 ${ok}장은 올라갔지만 설명 메모 업로드는 실패했어요: ${err.message || err}`
+          : `❌ 설명 메모 업로드 실패: ${err.message || err} — 토큰 권한/폴더명을 확인해주세요.`
+      );
       return;
     }
 
     setUploading(false);
     setStatus(
-      `✨ 사진 ${ok}장 + 설명 메모 GitHub에 업로드 완료! (public/images/${folderPath}/, "${branch}" 브랜치) ` +
-        `이제 Claude한테 "${folderPath} 폴더 사진으로 글 써줘"라고 말해보세요.`
+      (uploadPhotos ? `✨ 사진 ${ok}장 + 설명 메모` : '✨ 설명 메모') +
+        ` GitHub에 업로드 완료! (public/images/${folderPath}/, "${branch}" 브랜치) ` +
+        `이제 Claude한테 "${folderPath} 폴더${uploadPhotos ? ' 사진으로' : ' 설명으로'} 글 써줘"라고 말해보세요.`
     );
   };
 
@@ -148,10 +161,13 @@ export const GithubPhotoUploader: React.FC = () => {
           <Github size={28} color="#03C75A" />
         </div>
         <div>
-          <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>사진 + 설명 GitHub 업로드</h2>
+          <h2 style={{ fontSize: '1.4rem', fontWeight: 700 }}>설명 메모 + 사진 GitHub 업로드</h2>
           <p style={{ color: 'var(--text-muted)', fontSize: '0.9rem' }}>
-            토끼 모자이크 스튜디오 등에서 이미 처리해서 다운로드해둔 사진들을, 설명 메모와 함께 이 저장소에 바로
-            올려요. 얼굴 인식이나 모자이크 처리는 여기서 하지 않아요 — 완성된 파일만 다룹니다.
+            원본 사진이든 토끼 모자이크 스튜디오에서 처리해서 다운로드해둔 사진이든, 설명 메모와 함께 이 저장소에
+            올려요. 얼굴 인식이나 모자이크 처리는 여기서 하지 않아요. <strong>기본은 사진은 안 올리고 설명 메모만
+            커밋</strong>돼요 — 얼굴이 그대로 보이는 원본을 캡션만 붙이는 용도로 올려도 저장소에는 사진이 절대
+            올라가지 않아요. 모자이크 처리를 끝낸 뒤 "사진도 같이 올리기"를 켜고 다시 올리면 그때 실제 파일이
+            커밋돼요.
           </p>
         </div>
       </div>
@@ -170,8 +186,8 @@ export const GithubPhotoUploader: React.FC = () => {
         >
           <input type="file" accept="image/*" multiple onChange={handleFilesChange} style={{ display: 'none' }} />
           <Upload size={28} color="#03C75A" style={{ marginBottom: '8px' }} />
-          <div style={{ fontSize: '1rem', fontWeight: 700 }}>이미 처리된(모자이크된) 사진들을 여기서 선택</div>
-          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '6px' }}>여러 장 한 번에 선택 가능</p>
+          <div style={{ fontSize: '1rem', fontWeight: 700 }}>사진들을 여기서 선택 (원본이든 모자이크 처리된 것이든)</div>
+          <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', marginTop: '6px' }}>여러 장 한 번에 선택 가능 · 기본은 설명 메모만 올라가요</p>
         </label>
       ) : (
         <>
@@ -277,21 +293,31 @@ export const GithubPhotoUploader: React.FC = () => {
                 style={{ width: '100%', background: '#090d16', color: '#f8fafc', border: '1px solid var(--border-color)', borderRadius: '8px', padding: '8px 10px', fontSize: '0.82rem' }}
               />
               <p style={{ fontSize: '0.72rem', color: 'var(--text-muted)', marginTop: '4px' }}>
-                → <code>public/images/{folder || '<폴더명>'}/</code>
+                → <code>public/images/{folder || '<폴더명>'}/captions.md</code>
               </p>
             </div>
           </div>
+
+          <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', marginBottom: '10px', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={uploadPhotos}
+              onChange={(e) => setUploadPhotos(e.target.checked)}
+              style={{ accentColor: '#03C75A', width: '16px', height: '16px' }}
+            />
+            사진도 같이 올리기 (기본은 설명 메모만)
+          </label>
 
           <button onClick={handleUpload} className="btn-naver" style={{ width: '100%', justifyContent: 'center' }} disabled={uploading}>
             {uploading ? (
               <>
                 <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                업로드 중... ({uploadedCount}/{items.length})
+                {uploadPhotos ? `업로드 중... (${uploadedCount}/${items.length})` : '업로드 중...'}
               </>
             ) : (
               <>
                 <Github size={16} />
-                사진 + 설명 GitHub에 업로드
+                {uploadPhotos ? '사진 + 설명 GitHub에 업로드' : '설명 메모 GitHub에 업로드'}
               </>
             )}
           </button>
