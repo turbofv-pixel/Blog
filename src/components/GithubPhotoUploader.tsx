@@ -55,10 +55,10 @@ export const GithubPhotoUploader: React.FC = () => {
     localStorage.removeItem(ANTHROPIC_API_KEY_STORAGE_KEY);
   };
 
-  // 한 장 설명 생성 — 성공하면 그 항목의 caption을 채우고 true, 실패하면 aiStatus에 에러를
-  // 남기고 false를 반환한다 (여러 장 순회할 때 실패 개수를 세는 데 씀).
+  // 한 장 설명 생성 — 성공하면 그 항목의 caption을 채우고 null(에러 없음)을, 실패하면 에러
+  // 메시지 문자열을 반환한다 (여러 장 순회할 때 실패 개수/마지막 에러 내용을 모으는 데 씀).
   // mode='local'이면 브라우저 안에서 무료로(키 불필요), mode='anthropic'이면 API 키로 처리한다.
-  const generateCaptionFor = async (id: string, file: File, mode: CaptionMode, key: string): Promise<boolean> => {
+  const generateCaptionFor = async (id: string, file: File, mode: CaptionMode, key: string): Promise<string | null> => {
     setAiGeneratingIds((prev) => new Set(prev).add(id));
     try {
       const caption =
@@ -69,10 +69,11 @@ export const GithubPhotoUploader: React.FC = () => {
             })
           : await generatePhotoCaption(file, key);
       setItems((prev) => prev.map((it) => (it.id === id ? { ...it, caption } : it)));
-      return true;
+      return null;
     } catch (err: any) {
-      setAiStatus(`❌ ${file.name} 설명 생성 실패: ${err.message || err}`);
-      return false;
+      const message = err?.message || String(err);
+      setAiStatus(`❌ ${file.name} 설명 생성 실패: ${message}`);
+      return message;
     } finally {
       setAiGeneratingIds((prev) => {
         const next = new Set(prev);
@@ -109,6 +110,7 @@ export const GithubPhotoUploader: React.FC = () => {
     if (targetItems.length === 0) return;
     setAiStatus(null);
     let fails = 0;
+    let lastError: string | null = null;
     for (const it of targetItems) {
       setAiStatus(
         captionMode === 'local'
@@ -116,13 +118,16 @@ export const GithubPhotoUploader: React.FC = () => {
           : `AI가 사진을 분석하는 중... (${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name}`
       );
       // eslint-disable-next-line no-await-in-loop
-      const ok = await generateCaptionFor(it.id, it.file, captionMode, key);
-      if (!ok) fails++;
+      const error = await generateCaptionFor(it.id, it.file, captionMode, key);
+      if (error) {
+        fails++;
+        lastError = error;
+      }
     }
     setAiStatus(
       fails === 0
         ? `✨ 사진 ${targetItems.length}장 설명 자동 생성 완료! 내용 확인하고 필요하면 수정해주세요.`
-        : `⚠️ ${targetItems.length - fails}장 성공, ${fails}장 실패했어요.`
+        : `⚠️ ${targetItems.length - fails}장 성공, ${fails}장 실패했어요. (${lastError})`
     );
   };
 

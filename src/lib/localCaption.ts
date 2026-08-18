@@ -19,13 +19,25 @@ let captionerPromise: Promise<any> | null = null;
 async function getCaptioner(onProgress?: (p: ModelLoadProgress) => void) {
   if (!captionerPromise) {
     captionerPromise = (async () => {
-      const { pipeline } = await import('@huggingface/transformers');
+      const { pipeline, env } = await import('@huggingface/transformers');
+      // onnxruntime-web은 기본적으로 SharedArrayBuffer 기반 멀티스레드 WASM을 쓰려고 하는데,
+      // 이건 페이지가 크로스오리진 격리(COOP/COEP 헤더)돼 있어야만 동작한다. GitHub Pages는
+      // 정적 호스팅이라 그 헤더를 안 붙여주므로, 멀티스레드를 시도하면 모델 로딩이 바로 실패한다
+      // (실기기에서 "설명 생성 실패"가 즉시 뜨는 원인). 싱글스레드로 강제해서 우회한다.
+      if (env.backends.onnx.wasm) {
+        env.backends.onnx.wasm.numThreads = 1;
+      }
       return pipeline('image-to-text', MODEL_ID, {
         progress_callback: onProgress
           ? (p: any) => onProgress({ status: p.status, file: p.file, progress: p.progress })
           : undefined,
       });
-    })();
+    })().catch((err) => {
+      // 실패하면 다음 시도 때 다시 새로 시작할 수 있게 캐시를 비운다 (그대로 두면 이후 모든
+      // 호출이 같은 실패한 Promise를 재사용해서 영원히 실패하게 됨).
+      captionerPromise = null;
+      throw err;
+    });
   }
   return captionerPromise;
 }
