@@ -1,43 +1,44 @@
 // 사진 설명을 완전히 무료로, 서버/API 호출 없이 브라우저 안에서 생성한다.
-// @huggingface/transformers(transformers.js)로 작은 이미지 캡셔닝 모델(ViT 인코더 +
-// GPT-2 디코더)을 브라우저에서 직접 돌린다. 모델 파일은 최초 1회 HuggingFace Hub에서
-// 내려받아 브라우저 캐시(Cache Storage)에 저장되고, 그 다음부터는 인터넷 없이도 즉시
-// 동작한다. Anthropic API 방식과 달리 사용한 만큼 요금이 청구되는 일이 전혀 없다.
+// @huggingface/transformers(transformers.js)로 작은 이미지 모델을 브라우저에서 직접 돌린다.
+// 모델 파일은 최초 1회 HuggingFace Hub에서 내려받아 브라우저 캐시(Cache Storage)에 저장되고,
+// 그 다음부터는 인터넷 없이도 즉시 동작한다. Anthropic API 방식과 달리 사용한 만큼 요금이
+// 청구되는 일이 전혀 없다.
 //
-// 단점: 이 모델은 영어로만 캡션을 생성한다(한국어 지원 소형 캡셔닝 모델은 브라우저에서
-// 돌릴 만한 크기로 마땅한 게 없음). 그래도 Claude가 그 영어 설명만 읽고 한국어로 글을
-// 쓰는 데는 전혀 문제없다 — 어차피 사진을 직접 보여주는 것보다 텍스트가 훨씬 싸다.
+// 원래는 완전한 문장을 만들어주는 인코더+디코더 캡셔닝 모델(Xenova/vit-gpt2-image-captioning)을
+// 썼는데, 그 모델은 인코더/디코더 두 개의 ONNX 세션을 동시에 메모리에 올리고 토큰을 한 개씩
+// 순차 생성하는 autoregressive 구조라 메모리 사용량이 크다. 실기기(안드로이드, 메모리가 적은
+// 기종)에서 dtype을 여러 조합(q8/fp32/인코더-디코더 분리)으로 바꿔봐도 매번 브라우저 탭이
+// 죽는 것("Aw, Snap!")이 확인됐다.
+//
+// 그래서 훨씬 가벼운 "이미지 분류" 모델(인코더 하나만 쓰고, 문장 생성 루프가 없음)로 바꿨다.
+// 완전한 문장 대신 사진에 뭐가 있을 것 같은지 라벨(태그) 목록을 뽑아서 캡션처럼 이어붙인다 —
+// 문장형 캡션보다 정보는 거칠지만, Claude가 그 태그 목록만 보고도 글을 쓰는 데는 충분하고,
+// 세션이 하나뿐이라 메모리 사용량이 훨씬 작아 모바일에서도 안정적으로 동작한다. 참고로 이
+// 모델은 ImageNet 클래스(주로 사물/동물 이름)로 학습돼 있어 사람 자체는 잘 구분하지 못한다 —
+// 배경/사물 위주의 태그가 나온다고 보면 된다.
 
-const MODEL_ID = 'Xenova/vit-gpt2-image-captioning';
-const MAX_IMAGE_DIM = 512; // 캡션 생성 목적으론 이 정도 해상도로 충분하고, 추론 속도도 빨라짐
+const MODEL_ID = 'Xenova/vit-base-patch16-224';
+const MAX_IMAGE_DIM = 448; // 분류 모델 입력은 224px로 리사이즈되지만 원본 비율 보존 여유를 둠
+const TOP_K = 5;
 
 export type ModelLoadProgress = { status: string; file?: string; progress?: number };
 
-let captionerPromise: Promise<any> | null = null;
+let classifierPromise: Promise<any> | null = null;
 
 // 모델을 한 번만 로드해서 재사용한다 (여러 장 연달아 처리할 때 매번 다시 내려받지 않도록).
-async function getCaptioner(onProgress?: (p: ModelLoadProgress) => void) {
-  if (!captionerPromise) {
-    captionerPromise = (async () => {
+async function getClassifier(onProgress?: (p: ModelLoadProgress) => void) {
+  if (!classifierPromise) {
+    classifierPromise = (async () => {
       const { pipeline, env } = await import('@huggingface/transformers');
       // onnxruntime-web은 기본적으로 SharedArrayBuffer 기반 멀티스레드 WASM을 쓰려고 하는데,
       // 이건 페이지가 크로스오리진 격리(COOP/COEP 헤더)돼 있어야만 동작한다. GitHub Pages는
-      // 정적 호스팅이라 그 헤더를 안 붙여주므로, 멀티스레드를 시도하면 모델 로딩이 바로 실패한다
-      // (실기기에서 "설명 생성 실패"가 즉시 뜨는 원인). 싱글스레드로 강제해서 우회한다.
+      // 정적 호스팅이라 그 헤더를 안 붙여주므로, 멀티스레드를 시도하면 모델 로딩이 바로 실패한다.
+      // 싱글스레드로 강제해서 우회한다.
       if (env.backends.onnx.wasm) {
         env.backends.onnx.wasm.numThreads = 1;
       }
-      return pipeline('image-to-text', MODEL_ID, {
-        // transformers.js가 wasm 기기에서 dtype을 안 정해주면(또는 'q8'로 명시해도) 기본값이
-        // 'q8'인데, 이건 파일명 접미사 "_quantized"로 매핑된다 — 그런데 이 저장소의
-        // decoder_model_merged_quantized.onnx 파일 자체가 깨져있어서("Missing required
-        // scale ... DequantizeLinear") dtype을 뭘로 줘도 'q8'인 이상 항상 같은 파일을 불러와
-        // 매번 똑같이 실패했다(실기기에서 dtype:'q8'로도 이전과 동일한 에러 재현 확인).
-        // 접미사 없는 fp32(decoder_model_merged.onnx)는 정상 로드되지만, 인코더+디코더 둘 다
-        // fp32로 하면 용량이 너무 커서 모바일 탭이 메모리 부족으로 죽는 문제도 확인됨
-        // ("Aw, Snap!"). 그래서 깨진 파일이 있는 디코더만 fp32(안전한 파일)로 두고, 문제없는
-        // 인코더(ViT, 태그된 임베딩이 없어 양자화 버그와 무관)는 q8로 줄여서 절충한다.
-        dtype: { encoder_model: 'q8', decoder_model_merged: 'fp32' },
+      return pipeline('image-classification', MODEL_ID, {
+        dtype: 'q8', // 세션이 하나뿐인 분류 모델이라 q8로 충분히 가볍고 안정적이다.
         progress_callback: onProgress
           ? (p: any) => onProgress({ status: p.status, file: p.file, progress: p.progress })
           : undefined,
@@ -45,11 +46,11 @@ async function getCaptioner(onProgress?: (p: ModelLoadProgress) => void) {
     })().catch((err) => {
       // 실패하면 다음 시도 때 다시 새로 시작할 수 있게 캐시를 비운다 (그대로 두면 이후 모든
       // 호출이 같은 실패한 Promise를 재사용해서 영원히 실패하게 됨).
-      captionerPromise = null;
+      classifierPromise = null;
       throw err;
     });
   }
-  return captionerPromise;
+  return classifierPromise;
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
@@ -81,10 +82,15 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
 }
 
 export async function generateLocalCaption(file: File, onProgress?: (p: ModelLoadProgress) => void): Promise<string> {
-  const captioner = await getCaptioner(onProgress);
+  const classifier = await getClassifier(onProgress);
   const dataUrl = await fileToResizedDataUrl(file);
-  const result = await captioner(dataUrl);
-  const text = Array.isArray(result) ? result[0]?.generated_text : result?.generated_text;
-  if (!text) throw new Error('캡션 생성 결과가 비어있습니다.');
-  return text.trim();
+  const results = await classifier(dataUrl, { topk: TOP_K });
+  const list: { label: string; score: number }[] = Array.isArray(results) ? results : [results];
+  if (list.length === 0) throw new Error('캡션 생성 결과가 비어있습니다.');
+  const tags = list
+    .filter((r) => r?.label)
+    .map((r) => `${r.label}${typeof r.score === 'number' ? ` (${Math.round(r.score * 100)}%)` : ''}`)
+    .join(', ');
+  if (!tags) throw new Error('캡션 생성 결과가 비어있습니다.');
+  return `Likely contains: ${tags}`;
 }
