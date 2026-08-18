@@ -329,6 +329,9 @@ export const MosaicStudio: React.FC = () => {
   const [githubToken, setGithubToken] = useState<string>(() => localStorage.getItem(GITHUB_TOKEN_KEY) || '');
   const [githubBranch, setGithubBranch] = useState<string>(() => localStorage.getItem(GITHUB_BRANCH_KEY) || 'master');
   const [githubFolder, setGithubFolder] = useState<string>('');
+  // 기본은 설명 메모(텍스트)만 올리고, 사진 자체는 사용자가 직접 검토해서 올리게 둔다 — 자동으로
+  // 커밋되기 전에 사진을 한 번 더 눈으로 확인하고 싶을 수 있으니, 켜고 싶을 때만 사진도 포함.
+  const [githubUploadPhotos, setGithubUploadPhotos] = useState<boolean>(false);
   const [githubShowToken, setGithubShowToken] = useState<boolean>(false);
   const [githubUploading, setGithubUploading] = useState<boolean>(false);
   const [githubStatus, setGithubStatus] = useState<string | null>(null);
@@ -769,8 +772,9 @@ export const MosaicStudio: React.FC = () => {
     localStorage.removeItem(GITHUB_TOKEN_KEY);
   };
 
-  // 처리된 사진(+설명 메모)을 이 저장소의 public/images/<폴더>/ 에 바로 커밋한다.
-  // 다운로드→재업로드 없이 여기서 끝 — Claude는 그 폴더를 바로 읽어서 글을 쓸 수 있다.
+  // 기본은 설명 메모(captions.md)만 이 저장소의 public/images/<폴더>/ 에 커밋한다 — 사진
+  // 자체는 사용자가 직접 검토한 뒤 원하는 방식으로 올리도록 남겨둔다. "사진도 함께 올리기"를
+  // 켜면 처리된 사진까지 같이 커밋해서, 다운로드→재업로드 없이 여기서 끝낼 수도 있다.
   const handleUploadToGithub = async () => {
     const token = githubToken.trim();
     const folder = githubFolder.trim().replace(/^\/+|\/+$/g, '');
@@ -782,9 +786,8 @@ export const MosaicStudio: React.FC = () => {
       setGithubStatus('❌ 저장할 폴더 이름을 입력해주세요 (예: ansan-family-outing-2).');
       return;
     }
-    const readyItems = images.filter((it) => it.img);
-    if (readyItems.length === 0) {
-      setGithubStatus('❌ 아직 처리된 사진이 없어요.');
+    if (images.length === 0) {
+      setGithubStatus('❌ 사진을 먼저 올려주세요.');
       return;
     }
 
@@ -793,41 +796,50 @@ export const MosaicStudio: React.FC = () => {
     setGithubStatus(null);
 
     let ok = 0;
-    for (const item of readyItems) {
-      const filename = `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.jpg`;
-      setGithubStatus(`업로드 중... (${ok + 1}/${readyItems.length}) ${filename}`);
-      try {
-        const dataUrl = renderToDataUrl(item.img as HTMLImageElement, item.faces, mode, pixelSize, bunnyRef.current);
-        // eslint-disable-next-line no-await-in-loop
-        await githubPutFile(`public/images/${folder}/${filename}`, dataUrlToBase64(dataUrl), `사진 추가: ${filename}`, token, githubBranch);
-        ok++;
-        setGithubUploadedCount(ok);
-      } catch (err: any) {
-        setGithubStatus(`❌ ${filename} 업로드 실패: ${err.message || err} — 토큰 권한/폴더명을 확인해주세요.`);
-        setGithubUploading(false);
-        return;
+    if (githubUploadPhotos) {
+      const readyItems = images.filter((it) => it.img);
+      for (const item of readyItems) {
+        const filename = `rabbit_${item.file.name.replace(/\.[^.]+$/, '')}.jpg`;
+        setGithubStatus(`업로드 중... (${ok + 1}/${readyItems.length}) ${filename}`);
+        try {
+          const dataUrl = renderToDataUrl(item.img as HTMLImageElement, item.faces, mode, pixelSize, bunnyRef.current);
+          // eslint-disable-next-line no-await-in-loop
+          await githubPutFile(`public/images/${folder}/${filename}`, dataUrlToBase64(dataUrl), `사진 추가: ${filename}`, token, githubBranch);
+          ok++;
+          setGithubUploadedCount(ok);
+        } catch (err: any) {
+          setGithubStatus(`❌ ${filename} 업로드 실패: ${err.message || err} — 토큰 권한/폴더명을 확인해주세요.`);
+          setGithubUploading(false);
+          return;
+        }
       }
     }
 
+    setGithubStatus('업로드 중... 설명 메모(captions.md)');
     const captionsText = buildCaptionsText();
-    if (captionsText.trim()) {
-      try {
-        await githubPutFile(
-          `public/images/${folder}/captions.md`,
-          utf8ToBase64(captionsText),
-          '사진 설명 메모 추가',
-          token,
-          githubBranch
-        );
-      } catch {
-        // 캡션 업로드 실패는 치명적이지 않으니 조용히 넘어간다 (사진은 이미 다 올라갔음)
-      }
+    try {
+      await githubPutFile(
+        `public/images/${folder}/captions.md`,
+        utf8ToBase64(captionsText),
+        '사진 설명 메모 추가',
+        token,
+        githubBranch
+      );
+    } catch (err: any) {
+      setGithubUploading(false);
+      setGithubStatus(
+        githubUploadPhotos
+          ? `⚠️ 사진 ${ok}장은 올라갔지만 설명 메모 업로드는 실패했어요: ${err.message || err}`
+          : `❌ 설명 메모 업로드 실패: ${err.message || err} — 토큰 권한/폴더명을 확인해주세요.`
+      );
+      return;
     }
 
     setGithubUploading(false);
     setGithubStatus(
-      `✨ ${ok}장 GitHub에 업로드 완료! (public/images/${folder}/, "${githubBranch}" 브랜치) ` +
-        `이제 Claude한테 "${folder} 폴더 사진으로 글 써줘"라고 말해보세요.`
+      (githubUploadPhotos ? `✨ 사진 ${ok}장 + 설명 메모` : '✨ 설명 메모') +
+        ` GitHub에 업로드 완료! (public/images/${folder}/, "${githubBranch}" 브랜치) ` +
+        `이제 Claude한테 "${folder} 폴더${githubUploadPhotos ? ' 사진으로' : ' 설명으로'} 글 써줘"라고 말해보세요.`
     );
   };
 
@@ -1309,10 +1321,11 @@ export const MosaicStudio: React.FC = () => {
                 <div>
                   <span style={{ fontSize: '0.85rem', fontWeight: 600, marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
                     <Github size={16} />
-                    GitHub에 바로 올리기
+                    GitHub에 설명 메모 바로 올리기
                   </span>
                   <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', marginBottom: '10px' }}>
-                    다운로드·재업로드 없이 이 저장소에 바로 커밋해요. Claude는 그 폴더를 읽어서 글을 쓸 수 있어요.
+                    기본은 위에서 적은 설명 메모만 이 저장소에 커밋해요(사진은 안 올라감) — Claude가 그 폴더의
+                    설명만 읽고 글을 쓸 수 있어요. 사진은 원하시는 방법으로 직접 올려주세요.
                   </p>
 
                   <label style={{ display: 'block', fontSize: '0.8rem', fontWeight: 600, marginBottom: '4px' }}>GitHub 토큰</label>
@@ -1366,8 +1379,18 @@ export const MosaicStudio: React.FC = () => {
                     }}
                   />
                   <p style={{ fontSize: '0.74rem', color: 'var(--text-muted)', marginBottom: '8px' }}>
-                    → <code>public/images/{githubFolder || '<폴더명>'}/</code> 에 저장돼요.
+                    → <code>public/images/{githubFolder || '<폴더명>'}/captions.md</code> 로 저장돼요.
                   </p>
+
+                  <label style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', marginBottom: '10px', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={githubUploadPhotos}
+                      onChange={(e) => setGithubUploadPhotos(e.target.checked)}
+                      style={{ accentColor: '#03C75A', width: '16px', height: '16px' }}
+                    />
+                    사진도 같이 올리기 (기본은 설명 메모만)
+                  </label>
 
                   <button
                     onClick={handleUploadToGithub}
@@ -1378,12 +1401,14 @@ export const MosaicStudio: React.FC = () => {
                     {githubUploading ? (
                       <>
                         <RefreshCw size={16} style={{ animation: 'spin 1s linear infinite' }} />
-                        업로드 중... ({githubUploadedCount}/{images.filter((it) => it.img).length})
+                        {githubUploadPhotos
+                          ? `업로드 중... (${githubUploadedCount}/${images.filter((it) => it.img).length})`
+                          : '업로드 중...'}
                       </>
                     ) : (
                       <>
                         <Github size={16} />
-                        GitHub에 업로드
+                        {githubUploadPhotos ? '사진 + 설명 GitHub에 업로드' : '설명 메모 GitHub에 업로드'}
                       </>
                     )}
                   </button>
