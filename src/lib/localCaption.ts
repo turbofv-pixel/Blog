@@ -29,10 +29,13 @@ async function getCaptioner(onProgress?: (p: ModelLoadProgress) => void) {
       }
       return pipeline('image-to-text', MODEL_ID, {
         // transformers.js가 기기별로 자동으로 고르는 기본 dtype이 이 모델 저장소의 4비트
-        // 양자화(q4) 디코더 파일과 안 맞아서 "Missing required scale ... DequantizeLinear"
-        // 에러로 세션 생성 자체가 실패하는 게 실기기에서 확인됨. 양자화 없는 fp32로 고정해서
-        // 우회 — 파일이 조금 더 크지만(그래도 수십MB 대) 이 문제 자체가 사라진다.
-        dtype: 'fp32',
+        // 블록 양자화(q4) 디코더 파일과 안 맞아서 "Missing required scale ...
+        // DequantizeLinear" 에러로 세션 생성 자체가 실패하는 게 실기기에서 확인됨. 그렇다고
+        // fp32(비양자화)로 바꾸니 이번엔 모델이 너무 커서 모바일 브라우저 탭이 메모리 부족으로
+        // 죽는 문제("Aw, Snap!")가 생김. q4의 블록 단위 양자화(MatMulNBits)와 달리 q8은 더
+        // 단순한 방식(QuantizeLinear/DequantizeLinear + MatMulInteger)이라 그 버그를 피하면서도
+        // fp32보다 용량/메모리가 훨씬 작다 — 용량과 안정성의 절충점.
+        dtype: 'q8',
         progress_callback: onProgress
           ? (p: any) => onProgress({ status: p.status, file: p.file, progress: p.progress })
           : undefined,
