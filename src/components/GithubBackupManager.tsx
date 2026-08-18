@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Github, GitCommit, UploadCloud, FolderCheck, Copy, Check, Terminal, ShieldCheck, Sparkles } from 'lucide-react';
+import { GithubPhotoUploader } from './GithubPhotoUploader';
 
 export const GithubBackupManager: React.FC = () => {
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
@@ -14,8 +15,10 @@ export const GithubBackupManager: React.FC = () => {
   const gitUpdateCmd = `git add .\ngit commit -m "docs: add new post & mosaic photos"\ngit push`;
 
   return (
-    <div className="glass-panel animate-fade-in" style={{ padding: '28px' }}>
-      
+    <>
+      <GithubPhotoUploader />
+      <div className="glass-panel animate-fade-in" style={{ padding: '28px' }}>
+
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>
         <div style={{ background: 'rgba(255,255,255,0.1)', padding: '12px', borderRadius: '12px' }}>
           <Github size={28} color="#ffffff" />
@@ -95,6 +98,7 @@ export const GithubBackupManager: React.FC = () => {
         </pre>
       </div>
 
-    </div>
+      </div>
+    </>
   );
 };
