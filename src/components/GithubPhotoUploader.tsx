@@ -37,9 +37,14 @@ export const GithubPhotoUploader: React.FC = () => {
   const [status, setStatus] = useState<string | null>(null);
 
   // --- AI로 사진 설명 자동 생성 ---
-  // 기본은 'local' — 브라우저 안에서 완전 무료로 돌아가는 모델을 쓴다. API 키가 있고 더 정확한
-  // 한국어 설명이 필요하면 'anthropic'으로 바꿔서 쓸 수 있게 옵션으로 남겨둔다.
-  const [captionMode, setCaptionMode] = useState<CaptionMode>('local');
+  // 기본은 'anthropic' — 무료 브라우저 로컬 모델(vit-gpt2-image-captioning)을 기본으로
+  // 시도했으나, 실기기(안드로이드)에서 여러 dtype 조합(q8/fp32/인코더·디코더 분리)을 다
+  // 시도해도 로딩 도중이나 100% 다운로드 직후 브라우저 탭이 메모리 부족으로 계속 죽는 것을
+  // 확인(사용자 실기기 재현). 원인을 이 저장소가 제공하는 ONNX 파일 자체의 문제(디코더 fp32는
+  // 로드는 되지만 인코더+디코더 합친 메모리를 그 기기가 못 버팀)로 보고, 더 안정적인 Anthropic
+  // API 방식을 기본값으로 되돌렸다. 로컬 모드 코드는 지우지 않고 옵션으로 남겨둔다 — 메모리가
+  // 넉넉한 기기(PC 등)에서는 여전히 무료로 쓸 수 있음.
+  const [captionMode, setCaptionMode] = useState<CaptionMode>('anthropic');
   const [anthropicKey, setAnthropicKey] = useState<string>(() => localStorage.getItem(ANTHROPIC_API_KEY_STORAGE_KEY) || '');
   const [showAnthropicKey, setShowAnthropicKey] = useState<boolean>(false);
   const [aiGeneratingIds, setAiGeneratingIds] = useState<Set<string>>(new Set());
@@ -347,7 +352,11 @@ export const GithubPhotoUploader: React.FC = () => {
                 API 키 없이, 사진을 어디에도 전송하지 않고 브라우저 안에서 완전 무료로 설명을 생성해요. 처음 한 번만
                 모델 파일을 내려받고(수십MB, 인터넷 연결 필요) 그 다음부터는 브라우저에 캐시돼서 오프라인에서도 바로
                 동작해요. 다만 이 모델은 <strong>영어로만</strong> 설명을 만들어요 — 그래도 Claude가 그 영어 설명만
-                읽고 한국어로 글을 쓰는 데는 전혀 문제없어요.
+                읽고 한국어로 글을 쓰는 데는 전혀 문제없어요.{' '}
+                <strong style={{ color: '#fbbf24' }}>
+                  ⚠️ 모델이 커서 일부 모바일 기기(특히 메모리가 적은 기종)에서는 브라우저 탭이 죽어버릴 수 있어요 —
+                  안 되면 옆의 "Claude API" 모드를 써주세요.
+                </strong>
               </p>
             ) : (
               <>
