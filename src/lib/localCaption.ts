@@ -65,7 +65,35 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
+// <img>로 로드하면 브라우저가 카메라 원본 해상도(수천만 화소) 그대로 압축 해제한 비트맵을
+// 먼저 통째로 메모리에 올린 뒤에야 축소할 수 있다 — 실기기(안드로이드)에서 사진마다 예외 없이
+// "이미지를 불러오지 못했습니다"로 실패하는 게 확인됐는데, 특정 파일 문제가 아니라 이 축소 전
+// 대용량 디코딩 단계에서 메모리가 부족한 것으로 보인다. createImageBitmap의 resize 옵션을
+// 쓰면 브라우저가 디코딩과 동시에(또는 그와 가깝게) 축소할 수 있어 피크 메모리가 훨씬 작다.
+// 화면에 보여줄 게 아니라 분류 모델에 넣을 용도라 정사각형으로 눌러도 상관없다.
 async function fileToResizedDataUrl(file: File): Promise<string> {
+  if (typeof createImageBitmap === 'function') {
+    try {
+      const bitmap = await createImageBitmap(file, {
+        resizeWidth: MAX_IMAGE_DIM,
+        resizeHeight: MAX_IMAGE_DIM,
+        resizeQuality: 'medium',
+      });
+      try {
+        const canvas = document.createElement('canvas');
+        canvas.width = bitmap.width;
+        canvas.height = bitmap.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error('canvas 2d context unavailable');
+        ctx.drawImage(bitmap, 0, 0);
+        return canvas.toDataURL('image/jpeg', 0.85);
+      } finally {
+        bitmap.close();
+      }
+    } catch {
+      // createImageBitmap 자체를 지원 안 하거나 실패하는 구형/특수 환경엔 <img> 방식으로 재시도
+    }
+  }
   const objectUrl = URL.createObjectURL(file);
   try {
     const img = await loadImage(objectUrl);
@@ -85,8 +113,10 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
 }
 
 export async function generateLocalCaption(file: File, onProgress?: (p: ModelLoadProgress) => void): Promise<string> {
-  const classifier = await getClassifier(onProgress);
+  // 사진 축소를 모델 로딩보다 먼저 해서, 메모리를 많이 잡아먹는 두 단계(대용량 디코딩 ↔ 모델
+  // 로딩)가 최대한 겹치지 않게 한다.
   const dataUrl = await fileToResizedDataUrl(file);
+  const classifier = await getClassifier(onProgress);
   const results = await classifier(dataUrl, { topk: TOP_K });
   const list: { label: string; score: number }[] = Array.isArray(results) ? results : [results];
   if (list.length === 0) throw new Error('캡션 생성 결과가 비어있습니다.');
