@@ -157,16 +157,29 @@ async function fileToResizedDataUrl(file: File, maxDim: number): Promise<string>
   }
 }
 
-// 크기를 줄여가며 디코딩을 재시도한다 — 메모리 압박으로 실패하는 경우, 더 작은 크기는 그
-// 메모리 여유 안에 들어갈 가능성이 높다(태그 분류 용도라 화질을 더 낮춰도 문제없음).
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    setTimeout(resolve, ms);
+  });
+}
+
+// 크기를 줄여가며, 또 크기마다 약간의 대기 후 재시도한다. 사진 여러 장을 한꺼번에 선택해서
+// 연달아 빠르게 읽으면(자동 일괄 생성) 상당수가 "파일을 읽지 못함"으로 실패하는 게 실기기에서
+// 확인됐다 — 특정 파일이나 해상도 문제가 아니라(같은 배치에서 일부는 성공, 대부분은 실패)
+// 안드로이드 쪽 파일 접근이 순간적으로 밀리는 것으로 보인다. 즉시 재시도보다 잠깐 쉬었다
+// 재시도하는 쪽이 이런 일시적 문제에는 더 효과적이다.
 async function fileToResizedDataUrlWithRetry(file: File): Promise<string> {
   let lastErr: unknown;
   for (const dim of RESIZE_ATTEMPTS) {
-    try {
-      // eslint-disable-next-line no-await-in-loop
-      return await fileToResizedDataUrl(file, dim);
-    } catch (err) {
-      lastErr = err;
+    for (let attempt = 0; attempt < 2; attempt++) {
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        return await fileToResizedDataUrl(file, dim);
+      } catch (err) {
+        lastErr = err;
+        // eslint-disable-next-line no-await-in-loop
+        await sleep(400 * (attempt + 1));
+      }
     }
   }
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));

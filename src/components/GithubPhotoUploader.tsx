@@ -156,6 +156,13 @@ export const GithubPhotoUploader: React.FC = () => {
           ? `(${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name} 분석 준비 중...`
           : `AI가 사진을 분석하는 중... (${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name}`
       );
+      // 로컬 모드에서 여러 사진을 한꺼번에 연달아 빠르게 읽으면(원본 파일 접근) 상당수가
+      // 실패하는 게 실기기에서 확인됐다 — 사진 사이에 짧게 쉬어서 파일 접근이 순간적으로
+      // 밀리지 않게 한다.
+      if (captionMode === 'local' && targetItems.indexOf(it) > 0) {
+        // eslint-disable-next-line no-await-in-loop
+        await new Promise((resolve) => setTimeout(resolve, 300));
+      }
       // eslint-disable-next-line no-await-in-loop
       const error = await generateCaptionFor(it, captionMode, key);
       if (error) {
