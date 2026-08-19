@@ -20,6 +20,10 @@ interface UploadItem {
   file: File;
   objectUrl: string;
   caption: string;
+  // AI(로컬 태그 또는 Anthropic)가 채운 caption과는 별개로, 사용자가 직접 덧붙이는 메모.
+  // AI 태그만으로는 정보가 부족할 수 있어서(특히 무료 로컬 모드는 거친 영어 태그만 나옴)
+  // 둘 다 따로 입력해서 같이 업로드할 수 있게 한다.
+  userNote: string;
   // 무료(로컬) 모드로 한 번 축소에 성공한 사진의 결과(data URL)를 캐싱해둔다. 실기기에서
   // 원본 File을 두 번째로 읽으려 하면(예: "다시 생성" 버튼) 파일 바이트 자체를 못 읽는 경우가
   // 확인돼서, 원본은 최초 1회만 읽고 그 다음부턴 이 캐시를 재사용한다.
@@ -229,7 +233,7 @@ export const GithubPhotoUploader: React.FC = () => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
     items.forEach((it) => URL.revokeObjectURL(it.objectUrl));
-    const newItems: UploadItem[] = files.map((f) => ({ id: uid(), file: f, objectUrl: URL.createObjectURL(f), caption: '' }));
+    const newItems: UploadItem[] = files.map((f) => ({ id: uid(), file: f, objectUrl: URL.createObjectURL(f), caption: '', userNote: '' }));
     setItems(newItems);
     setStatus(null);
     setAiStatus(null);
@@ -243,6 +247,10 @@ export const GithubPhotoUploader: React.FC = () => {
 
   const handleCaptionChange = (id: string, caption: string) => {
     setItems((prev) => prev.map((it) => (it.id === id ? { ...it, caption } : it)));
+  };
+
+  const handleUserNoteChange = (id: string, userNote: string) => {
+    setItems((prev) => prev.map((it) => (it.id === id ? { ...it, userNote } : it)));
   };
 
   const handleRemoveItem = (id: string) => {
@@ -289,7 +297,15 @@ export const GithubPhotoUploader: React.FC = () => {
   };
 
   const buildCaptionsText = () =>
-    items.map((it, i) => `${i + 1}. ${it.file.name} — ${it.caption.trim() || '(설명 없음)'}`).join('\n');
+    items
+      .map((it, i) => {
+        const lines = [`${i + 1}. ${it.file.name}`];
+        if (it.caption.trim()) lines.push(`   AI 태그: ${it.caption.trim()}`);
+        if (it.userNote.trim()) lines.push(`   직접 메모: ${it.userNote.trim()}`);
+        if (!it.caption.trim() && !it.userNote.trim()) lines.push('   (설명 없음)');
+        return lines.join('\n');
+      })
+      .join('\n\n');
 
   const handleUpload = async () => {
     const tok = token.trim();
@@ -532,7 +548,8 @@ export const GithubPhotoUploader: React.FC = () => {
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {it.file.name}
                   </div>
-                  <div style={{ display: 'flex', gap: '6px' }}>
+                  <div style={{ fontSize: '0.68rem', color: '#a78bfa', marginBottom: '3px' }}>AI 태그</div>
+                  <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
                     <textarea
                       value={it.caption}
                       onChange={(e) => handleCaptionChange(it.id, e.target.value)}
@@ -565,6 +582,24 @@ export const GithubPhotoUploader: React.FC = () => {
                       )}
                     </button>
                   </div>
+                  <div style={{ fontSize: '0.68rem', color: '#03C75A', marginBottom: '3px' }}>내가 직접 추가 설명 (선택)</div>
+                  <textarea
+                    value={it.userNote}
+                    onChange={(e) => handleUserNoteChange(it.id, e.target.value)}
+                    placeholder="AI 태그만으론 부족할 때, 직접 이 사진에 대해 적어주세요 (예: 시흥 갯골생태공원 전망대에서 찍은 사진)"
+                    rows={1}
+                    style={{
+                      width: '100%',
+                      background: '#090d16',
+                      color: '#f8fafc',
+                      border: '1px solid rgba(3, 199, 90, 0.3)',
+                      borderRadius: '6px',
+                      padding: '6px 8px',
+                      fontSize: '0.82rem',
+                      resize: 'vertical',
+                      fontFamily: 'inherit',
+                    }}
+                  />
                 </div>
                 <button onClick={() => handleRemoveItem(it.id)} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', flexShrink: 0 }}>
                   <X size={16} />
