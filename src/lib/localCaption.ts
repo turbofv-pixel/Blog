@@ -18,7 +18,12 @@
 // 배경/사물 위주의 태그가 나온다고 보면 된다.
 
 const MODEL_ID = 'Xenova/vit-base-patch16-224';
-const MAX_IMAGE_DIM = 448; // 분류 모델 입력은 224px로 리사이즈되지만 원본 비율 보존 여유를 둠
+// 모델이 실제로 받는 입력은 224px뿐이라, 그보다 큰 중간 이미지를 만들 이유가 없다. 처음
+// 자동 생성 땐 성공했는데 모델이 이미 메모리에 캐시된 뒤 개별 재생성 버튼으로 다시 시도하면
+// 실패하는 게 실기기에서 확인됐다 — 모델이 이미 메모리를 쓰고 있는 상태에서는 디코딩용
+// 여유가 더 적다는 뜻이라, 중간 이미지 크기를 최대한 줄인다. 그래도 실패하면 더 작은 크기로
+// 한 번 더 시도한다.
+const RESIZE_ATTEMPTS = [224, 160, 96];
 const TOP_K = 5;
 
 export type ModelLoadProgress = { status: string; file?: string; progress?: number };
@@ -71,12 +76,12 @@ function loadImage(src: string): Promise<HTMLImageElement> {
 // 대용량 디코딩 단계에서 메모리가 부족한 것으로 보인다. createImageBitmap의 resize 옵션을
 // 쓰면 브라우저가 디코딩과 동시에(또는 그와 가깝게) 축소할 수 있어 피크 메모리가 훨씬 작다.
 // 화면에 보여줄 게 아니라 분류 모델에 넣을 용도라 정사각형으로 눌러도 상관없다.
-async function fileToResizedDataUrl(file: File): Promise<string> {
+async function fileToResizedDataUrl(file: File, maxDim: number): Promise<string> {
   if (typeof createImageBitmap === 'function') {
     try {
       const bitmap = await createImageBitmap(file, {
-        resizeWidth: MAX_IMAGE_DIM,
-        resizeHeight: MAX_IMAGE_DIM,
+        resizeWidth: maxDim,
+        resizeHeight: maxDim,
         resizeQuality: 'medium',
       });
       try {
@@ -97,7 +102,7 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
   const objectUrl = URL.createObjectURL(file);
   try {
     const img = await loadImage(objectUrl);
-    const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(img.naturalWidth, img.naturalHeight));
+    const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
     const w = Math.max(1, Math.round(img.naturalWidth * scale));
     const h = Math.max(1, Math.round(img.naturalHeight * scale));
     const canvas = document.createElement('canvas');
@@ -112,10 +117,25 @@ async function fileToResizedDataUrl(file: File): Promise<string> {
   }
 }
 
+// 크기를 줄여가며 디코딩을 재시도한다 — 메모리 압박으로 실패하는 경우, 더 작은 크기는 그
+// 메모리 여유 안에 들어갈 가능성이 높다(태그 분류 용도라 화질을 더 낮춰도 문제없음).
+async function fileToResizedDataUrlWithRetry(file: File): Promise<string> {
+  let lastErr: unknown;
+  for (const dim of RESIZE_ATTEMPTS) {
+    try {
+      // eslint-disable-next-line no-await-in-loop
+      return await fileToResizedDataUrl(file, dim);
+    } catch (err) {
+      lastErr = err;
+    }
+  }
+  throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
+}
+
 export async function generateLocalCaption(file: File, onProgress?: (p: ModelLoadProgress) => void): Promise<string> {
   // 사진 축소를 모델 로딩보다 먼저 해서, 메모리를 많이 잡아먹는 두 단계(대용량 디코딩 ↔ 모델
   // 로딩)가 최대한 겹치지 않게 한다.
-  const dataUrl = await fileToResizedDataUrl(file);
+  const dataUrl = await fileToResizedDataUrlWithRetry(file);
   const classifier = await getClassifier(onProgress);
   const results = await classifier(dataUrl, { topk: TOP_K });
   const list: { label: string; score: number }[] = Array.isArray(results) ? results : [results];
