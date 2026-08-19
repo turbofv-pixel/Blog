@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste, Sparkles } from 'lucide-react';
 import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
 import { ANTHROPIC_API_KEY_STORAGE_KEY, generatePhotoCaption } from '../lib/anthropicCaption';
-import { generateLocalCaption } from '../lib/localCaption';
+import { resizeImageForCaption, classifyResizedImage } from '../lib/localCaption';
 
 type CaptionMode = 'local' | 'anthropic';
 
@@ -20,6 +20,10 @@ interface UploadItem {
   file: File;
   objectUrl: string;
   caption: string;
+  // 무료(로컬) 모드로 한 번 축소에 성공한 사진의 결과(data URL)를 캐싱해둔다. 실기기에서
+  // 원본 File을 두 번째로 읽으려 하면(예: "다시 생성" 버튼) 파일 바이트 자체를 못 읽는 경우가
+  // 확인돼서, 원본은 최초 1회만 읽고 그 다음부턴 이 캐시를 재사용한다.
+  localResizedDataUrl?: string;
 }
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -80,32 +84,45 @@ export const GithubPhotoUploader: React.FC = () => {
   // 한 장 설명 생성 — 성공하면 그 항목의 caption을 채우고 null(에러 없음)을, 실패하면 에러
   // 메시지 문자열을 반환한다 (여러 장 순회할 때 실패 개수/마지막 에러 내용을 모으는 데 씀).
   // mode='local'이면 브라우저 안에서 무료로(키 불필요), mode='anthropic'이면 API 키로 처리한다.
-  const generateCaptionFor = async (id: string, file: File, mode: CaptionMode, key: string): Promise<string | null> => {
-    setAiGeneratingIds((prev) => new Set(prev).add(id));
+  // item 전체(단순 id/file이 아니라)를 받는 이유: 로컬 모드에서 이미 축소해둔 사진(캐시)이
+  // 있으면 그걸 재사용해야 하는데, 그 캐시가 item에 붙어있기 때문이다.
+  const generateCaptionFor = async (item: UploadItem, mode: CaptionMode, key: string): Promise<string | null> => {
+    setAiGeneratingIds((prev) => new Set(prev).add(item.id));
     try {
-      const caption =
-        mode === 'local'
-          ? await generateLocalCaption(file, (p) => {
-              const pct = typeof p.progress === 'number' ? ` ${Math.round(p.progress)}%` : '';
-              setAiStatus(`모델 준비 중(최초 1회만, 이후엔 인터넷 없이도 즉시 실행)... ${p.file || p.status}${pct}`);
-            })
-          : await generatePhotoCaption(file, key);
-      setItems((prev) => prev.map((it) => (it.id === id ? { ...it, caption } : it)));
+      let caption: string;
+      if (mode === 'local') {
+        // 원본 File은 최초 1회만 읽는다 — 실기기에서 같은 File을 두 번째로 읽으려 하면(예:
+        // "다시 생성" 버튼) 파일 바이트 자체를 못 읽는 경우가 확인됐다. 이미 축소해둔 결과가
+        // 있으면 그걸 재사용하고, 없을 때만 원본을 읽어서 캐시에 남긴다.
+        let dataUrl = item.localResizedDataUrl;
+        if (!dataUrl) {
+          dataUrl = await resizeImageForCaption(item.file);
+          const resolvedDataUrl = dataUrl;
+          setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, localResizedDataUrl: resolvedDataUrl } : it)));
+        }
+        caption = await classifyResizedImage(dataUrl, (p) => {
+          const pct = typeof p.progress === 'number' ? ` ${Math.round(p.progress)}%` : '';
+          setAiStatus(`모델 준비 중(최초 1회만, 이후엔 인터넷 없이도 즉시 실행)... ${p.file || p.status}${pct}`);
+        });
+      } else {
+        caption = await generatePhotoCaption(item.file, key);
+      }
+      setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, caption } : it)));
       return null;
     } catch (err: any) {
       const message = describeError(err);
-      setAiStatus(`❌ ${file.name} 설명 생성 실패: ${message}`);
+      setAiStatus(`❌ ${item.file.name} 설명 생성 실패: ${message}`);
       return message;
     } finally {
       setAiGeneratingIds((prev) => {
         const next = new Set(prev);
-        next.delete(id);
+        next.delete(item.id);
         return next;
       });
     }
   };
 
-  const handleGenerateOneCaption = (id: string, file: File) => {
+  const handleGenerateOneCaption = (item: UploadItem) => {
     if (captionMode === 'anthropic') {
       const key = anthropicKey.trim();
       if (!key) {
@@ -113,10 +130,10 @@ export const GithubPhotoUploader: React.FC = () => {
         return;
       }
       setAiStatus(null);
-      generateCaptionFor(id, file, 'anthropic', key);
+      generateCaptionFor(item, 'anthropic', key);
     } else {
       setAiStatus(null);
-      generateCaptionFor(id, file, 'local', '');
+      generateCaptionFor(item, 'local', '');
     }
   };
 
@@ -140,7 +157,7 @@ export const GithubPhotoUploader: React.FC = () => {
           : `AI가 사진을 분석하는 중... (${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name}`
       );
       // eslint-disable-next-line no-await-in-loop
-      const error = await generateCaptionFor(it.id, it.file, captionMode, key);
+      const error = await generateCaptionFor(it, captionMode, key);
       if (error) {
         fails++;
         lastError = error;
@@ -480,7 +497,7 @@ export const GithubPhotoUploader: React.FC = () => {
                       }}
                     />
                     <button
-                      onClick={() => handleGenerateOneCaption(it.id, it.file)}
+                      onClick={() => handleGenerateOneCaption(it)}
                       className="btn-secondary"
                       title="이 사진 AI로 설명 생성"
                       style={{ padding: '6px 8px', flex: '0 0 auto' }}

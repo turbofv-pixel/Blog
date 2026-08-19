@@ -172,10 +172,19 @@ async function fileToResizedDataUrlWithRetry(file: File): Promise<string> {
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-export async function generateLocalCaption(file: File, onProgress?: (p: ModelLoadProgress) => void): Promise<string> {
-  // 사진 축소를 모델 로딩보다 먼저 해서, 메모리를 많이 잡아먹는 두 단계(대용량 디코딩 ↔ 모델
-  // 로딩)가 최대한 겹치지 않게 한다.
-  const dataUrl = await fileToResizedDataUrlWithRetry(file);
+// 원본 File을 축소된 data URL로 바꾼다 — 이 단계만 원본 파일 바이트를 실제로 읽는다.
+// 호출한 쪽에서 결과를 캐싱해두면, 같은 사진을 다시 분석할 때(예: "다시 생성" 버튼) 이
+// 함수를 또 부를 필요가 없다. 실기기에서 첫 번째 자동 분석(파일 선택 직후)은 성공하는데
+// 나중에 같은 File을 또 읽으려 하면("다시 생성" 버튼) 디코딩은커녕 파일 바이트 자체를 못
+// 읽는 경우가 확인됐다 — 안드로이드의 사진 선택기가 넘겨준 File의 접근 권한이 일회성/시간
+// 제한적일 수 있다는 뜻으로 보인다. 그래서 원본 파일은 최초 1회만 읽고, 그 결과(축소된
+// data URL)를 재사용하는 게 유일한 안정적인 방법이다.
+export async function resizeImageForCaption(file: File): Promise<string> {
+  return fileToResizedDataUrlWithRetry(file);
+}
+
+// 이미 축소돼 있는 data URL에 대해서만 분류를 돌린다 — 원본 File을 다시 건드리지 않는다.
+export async function classifyResizedImage(dataUrl: string, onProgress?: (p: ModelLoadProgress) => void): Promise<string> {
   const classifier = await getClassifier(onProgress);
   const results = await classifier(dataUrl, { topk: TOP_K });
   const list: { label: string; score: number }[] = Array.isArray(results) ? results : [results];
@@ -186,4 +195,11 @@ export async function generateLocalCaption(file: File, onProgress?: (p: ModelLoa
     .join(', ');
   if (!tags) throw new Error('캡션 생성 결과가 비어있습니다.');
   return `Likely contains: ${tags}`;
+}
+
+export async function generateLocalCaption(file: File, onProgress?: (p: ModelLoadProgress) => void): Promise<string> {
+  // 사진 축소를 모델 로딩보다 먼저 해서, 메모리를 많이 잡아먹는 두 단계(대용량 디코딩 ↔ 모델
+  // 로딩)가 최대한 겹치지 않게 한다.
+  const dataUrl = await resizeImageForCaption(file);
+  return classifyResizedImage(dataUrl, onProgress);
 }
