@@ -65,18 +65,41 @@ function loadImage(src: string): Promise<HTMLImageElement> {
     // img.onerror는 실패 이유가 담긴 Error가 아니라 브라우저의 raw Event 객체를 넘겨준다.
     // 그대로 reject하면 상위에서 String(event) === "[object Event]"로만 찍혀서 원인을 전혀
     // 알 수 없다(실기기에서 실제로 이렇게 확인됨) — 사람이 읽을 수 있는 Error로 바꿔서 던진다.
-    img.onerror = () => reject(new Error('이미지를 불러오지 못했습니다 (지원하지 않는 형식이거나 손상된 파일일 수 있어요).'));
+    img.onerror = () => reject(new Error('<img> 디코딩 실패'));
     img.src = src;
   });
 }
 
+// 파일의 처음 몇 바이트(매직 넘버)로 실제 이미지 포맷을 알아낸다. 확장자가 .jpg여도 안드로이드
+// 카메라가 "고효율" 설정으로 실제로는 HEIC/HEIF로 저장하는 경우가 흔한데, 크롬 안드로이드는
+// HEIC를 <img>/createImageBitmap 어느 쪽으로도 디코딩하지 못한다 — 크기(resize 옵션)를
+// 224→160→96으로 줄여도 매번 똑같이 실패하는 게 실기기에서 확인됐는데, 이건 메모리 문제라면
+// 나올 수 없는 패턴이라(크기를 줄였는데도 무조건 실패) 포맷 자체가 안 맞는 쪽에 무게가 실린다.
+// 이 함수는 그 여부를 실패 메시지에 정확히 남겨서 다음 진단에 추측이 필요 없게 한다.
+async function detectImageFormat(file: File): Promise<string> {
+  try {
+    const buf = await file.slice(0, 16).arrayBuffer();
+    const b = new Uint8Array(buf);
+    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'JPEG';
+    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'PNG';
+    if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46) return 'RIFF/WebP';
+    if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+      // ftyp 박스 — ISO base media file format(HEIC/HEIF, AVIF, MP4 등)
+      const brand = String.fromCharCode(b[8], b[9], b[10], b[11]);
+      return `ftyp/${brand}`;
+    }
+    return `알수없음(${Array.from(b.slice(0, 4)).map((n) => n.toString(16).padStart(2, '0')).join(' ')})`;
+  } catch {
+    return '알수없음(읽기 실패)';
+  }
+}
+
 // <img>로 로드하면 브라우저가 카메라 원본 해상도(수천만 화소) 그대로 압축 해제한 비트맵을
-// 먼저 통째로 메모리에 올린 뒤에야 축소할 수 있다 — 실기기(안드로이드)에서 사진마다 예외 없이
-// "이미지를 불러오지 못했습니다"로 실패하는 게 확인됐는데, 특정 파일 문제가 아니라 이 축소 전
-// 대용량 디코딩 단계에서 메모리가 부족한 것으로 보인다. createImageBitmap의 resize 옵션을
-// 쓰면 브라우저가 디코딩과 동시에(또는 그와 가깝게) 축소할 수 있어 피크 메모리가 훨씬 작다.
-// 화면에 보여줄 게 아니라 분류 모델에 넣을 용도라 정사각형으로 눌러도 상관없다.
+// 먼저 통째로 메모리에 올린 뒤에야 축소할 수 있다. createImageBitmap의 resize 옵션을 쓰면
+// 브라우저가 디코딩과 동시에(또는 그와 가깝게) 축소할 수 있어 피크 메모리가 훨씬 작다. 화면에
+// 보여줄 게 아니라 분류 모델에 넣을 용도라 정사각형으로 눌러도 상관없다.
 async function fileToResizedDataUrl(file: File, maxDim: number): Promise<string> {
+  let bitmapErr: unknown;
   if (typeof createImageBitmap === 'function') {
     try {
       const bitmap = await createImageBitmap(file, {
@@ -95,8 +118,10 @@ async function fileToResizedDataUrl(file: File, maxDim: number): Promise<string>
       } finally {
         bitmap.close();
       }
-    } catch {
-      // createImageBitmap 자체를 지원 안 하거나 실패하는 구형/특수 환경엔 <img> 방식으로 재시도
+    } catch (err) {
+      // createImageBitmap 자체를 지원 안 하거나 실패하는 환경엔 <img> 방식으로 재시도 —
+      // 다만 이 에러도 기억해뒀다가, <img>까지 실패하면 최종 에러 메시지에 같이 남긴다.
+      bitmapErr = err;
     }
   }
   const objectUrl = URL.createObjectURL(file);
@@ -112,6 +137,21 @@ async function fileToResizedDataUrl(file: File, maxDim: number): Promise<string>
     if (!ctx) throw new Error('canvas 2d context unavailable');
     ctx.drawImage(img, 0, 0, w, h);
     return canvas.toDataURL('image/jpeg', 0.85);
+  } catch (imgErr) {
+    const format = await detectImageFormat(file);
+    if (/^ftyp\/(heic|heix|heif|hevc|hevx|mif1|msf1)$/i.test(format)) {
+      // 크롬 안드로이드는 HEIC/HEIF를 <img>/createImageBitmap 어느 쪽으로도 디코딩하지 못한다.
+      // 확장자가 .jpg여도 휴대폰 카메라의 "고효율 사진" 설정 때문에 실제로는 HEIC로 저장되는
+      // 경우가 흔해서, 이 경우엔 사람이 바로 조치할 수 있는 안내로 바꿔서 던진다.
+      throw new Error(
+        '이 사진은 HEIC/HEIF 형식이라 이 브라우저에서 지원되지 않아요. 휴대폰 카메라 설정에서 "고효율 사진(HEIF)"을 끄고 표준 JPEG로 저장하도록 바꾼 뒤 다시 찍은 사진으로 시도해보세요.',
+      );
+    }
+    const bitmapMsg = bitmapErr instanceof Error ? bitmapErr.message : bitmapErr ? String(bitmapErr) : '(시도 안 함)';
+    const imgMsg = imgErr instanceof Error ? imgErr.message : String(imgErr);
+    throw new Error(
+      `이미지를 불러오지 못했습니다 (감지된 형식: ${format} / createImageBitmap: ${bitmapMsg} / img: ${imgMsg})`,
+    );
   } finally {
     URL.revokeObjectURL(objectUrl);
   }
