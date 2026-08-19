@@ -180,20 +180,34 @@ export const GithubPhotoUploader: React.FC = () => {
   // 빨리 모든 사진을 순서대로 미리 읽어서 축소본(data URL)만 캐싱해두고, 실제 분류는 그
   // 캐시만 사용하게 한다 — 그러면 분류가 얼마나 오래 걸리든 원본 파일 접근 타이밍과 무관해진다.
   const preloadLocalImages = async (targetItems: UploadItem[]): Promise<UploadItem[]> => {
-    const updated: UploadItem[] = [];
-    for (const it of targetItems) {
-      setAiStatus(`사진 불러오는 중... (${updated.length + 1}/${targetItems.length}) ${it.file.name}`);
-      try {
+    let working = targetItems.map((it) => ({ ...it }));
+    const total = working.length;
+    // 배치 전체를 한 번 도는 것으로 끝내지 않고, 실패한 사진들만 모아서 잠깐 쉬었다가 한 번
+    // 더(최대 3라운드) 재시도한다 — 실기기에서 1라운드만으로는 배치 안에서 일부만 성공하고
+    // 나머지는 실패하는 걸 확인했는데, 같은 실패가 매 라운드 계속 남는 게 아니라 라운드마다
+    // 성공률이 오르는 패턴이라(일시적 자원 경합으로 추정), 라운드를 더 주는 게 도움이 된다.
+    for (let round = 0; round < 3; round++) {
+      const pending = working.filter((it) => !it.localResizedDataUrl);
+      if (pending.length === 0) break;
+      if (round > 0) {
+        setAiStatus(`일부 사진 다시 불러오는 중... (${pending.length}장 남음)`);
         // eslint-disable-next-line no-await-in-loop
-        const dataUrl = await resizeImageForCaption(it.file);
-        updated.push({ ...it, localResizedDataUrl: dataUrl });
-      } catch {
-        // 여기서 실패해도 그대로 넘어간다 — 이후 실제 캡션 생성 단계에서 같은 실패가 다시
-        // 일어나면서 사용자에게 보일 에러 메시지가 정상적으로 채워진다.
-        updated.push(it);
+        await new Promise((resolve) => setTimeout(resolve, 800));
+      }
+      for (const it of pending) {
+        const doneCount = total - working.filter((w) => !w.localResizedDataUrl).length;
+        setAiStatus(`사진 불러오는 중... (${doneCount + 1}/${total}) ${it.file.name}`);
+        try {
+          // eslint-disable-next-line no-await-in-loop
+          const dataUrl = await resizeImageForCaption(it.file);
+          working = working.map((w) => (w.id === it.id ? { ...w, localResizedDataUrl: dataUrl } : w));
+        } catch {
+          // 이번 라운드에서도 실패 — 다음 라운드에서 다시 시도되고, 마지막 라운드까지 실패하면
+          // 이후 실제 캡션 생성 단계에서 같은 실패가 다시 일어나며 에러 메시지가 채워진다.
+        }
       }
     }
-    return updated;
+    return working;
   };
 
   // 캡션 생성을 시작하는 단일 진입점 — 자동 트리거(파일 선택 직후)와 수동 "전체 사진 AI로
