@@ -57,7 +57,10 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    // img.onerror는 실패 이유가 담긴 Error가 아니라 브라우저의 raw Event 객체를 넘겨준다.
+    // 그대로 reject하면 상위에서 String(event) === "[object Event]"로만 찍혀서 원인을 전혀
+    // 알 수 없다(실기기에서 실제로 이렇게 확인됨) — 사람이 읽을 수 있는 Error로 바꿔서 던진다.
+    img.onerror = () => reject(new Error('이미지를 불러오지 못했습니다 (지원하지 않는 형식이거나 손상된 파일일 수 있어요).'));
     img.src = src;
   });
 }

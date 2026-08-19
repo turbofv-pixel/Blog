@@ -24,6 +24,26 @@ interface UploadItem {
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
 
+// 캐치한 에러가 항상 Error 인스턴스인 건 아니다 — 브라우저 API 중에는 실패 이유 대신 raw
+// Event 객체를 던지는 것들이 있어서(예: <img>의 onerror), 그걸 그냥 String()으로 찍으면
+// "[object Event]"처럼 아무 정보도 없는 문자열이 된다(실기기 디버깅 중 실제로 겪은 문제).
+// 최대한 사람이 읽을 수 있는 문자열로 뽑아낸다.
+function describeError(err: unknown): string {
+  if (err instanceof Error) return err.message;
+  if (typeof err === 'string') return err;
+  if (err && typeof err === 'object') {
+    const anyErr = err as any;
+    if (typeof anyErr.message === 'string' && anyErr.message) return anyErr.message;
+    if (anyErr.error instanceof Error) return anyErr.error.message;
+    if (typeof anyErr.type === 'string') {
+      const target = anyErr.target;
+      const targetInfo = target?.src || target?.currentSrc || target?.tagName;
+      return `이벤트: ${anyErr.type}${targetInfo ? ` (${targetInfo})` : ''}`;
+    }
+  }
+  return String(err);
+}
+
 export const GithubPhotoUploader: React.FC = () => {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [bulkPasteText, setBulkPasteText] = useState<string>('');
@@ -73,7 +93,7 @@ export const GithubPhotoUploader: React.FC = () => {
       setItems((prev) => prev.map((it) => (it.id === id ? { ...it, caption } : it)));
       return null;
     } catch (err: any) {
-      const message = err?.message || String(err);
+      const message = describeError(err);
       setAiStatus(`❌ ${file.name} 설명 생성 실패: ${message}`);
       return message;
     } finally {
