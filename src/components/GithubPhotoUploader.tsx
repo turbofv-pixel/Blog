@@ -153,16 +153,12 @@ export const GithubPhotoUploader: React.FC = () => {
     for (const it of targetItems) {
       setAiStatus(
         captionMode === 'local'
-          ? `(${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name} 분석 준비 중...`
+          ? `(${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name} 분석 중...`
           : `AI가 사진을 분석하는 중... (${targetItems.indexOf(it) + 1}/${targetItems.length}) ${it.file.name}`
       );
-      // 로컬 모드에서 여러 사진을 한꺼번에 연달아 빠르게 읽으면(원본 파일 접근) 상당수가
-      // 실패하는 게 실기기에서 확인됐다 — 사진 사이에 짧게 쉬어서 파일 접근이 순간적으로
-      // 밀리지 않게 한다.
-      if (captionMode === 'local' && targetItems.indexOf(it) > 0) {
-        // eslint-disable-next-line no-await-in-loop
-        await new Promise((resolve) => setTimeout(resolve, 300));
-      }
+      // 로컬 모드는 이 시점에 이미 preloadLocalImages로 원본 File을 다 읽어서 축소본을
+      // 캐싱해둔 상태라(startGeneratingCaptions 참고), 여기서는 원본 파일을 다시 건드리지
+      // 않는다 — 그래서 파일 접근 타이밍을 신경 쓸 필요가 없다.
       // eslint-disable-next-line no-await-in-loop
       const error = await generateCaptionFor(it, captionMode, key);
       if (error) {
@@ -177,6 +173,44 @@ export const GithubPhotoUploader: React.FC = () => {
     );
   };
 
+  // 실기기(안드로이드)에서, 사진을 여러 장 선택한 뒤 시간이 좀 지나서(모델 로딩을 기다리거나,
+  // 다른 사진들을 먼저 처리하는 동안) 원본 File을 읽으려 하면 실패하는 게 반복 확인됐다 —
+  // 지연 재시도를 넣어도 마찬가지였다. 즉 원본 파일 접근 자체가 선택 직후 짧은 시간만
+  // 유효한 것으로 보인다. 그래서 느린 AI 모델 로딩/분류를 시작하기 전에, 선택 직후 최대한
+  // 빨리 모든 사진을 순서대로 미리 읽어서 축소본(data URL)만 캐싱해두고, 실제 분류는 그
+  // 캐시만 사용하게 한다 — 그러면 분류가 얼마나 오래 걸리든 원본 파일 접근 타이밍과 무관해진다.
+  const preloadLocalImages = async (targetItems: UploadItem[]): Promise<UploadItem[]> => {
+    const updated: UploadItem[] = [];
+    for (const it of targetItems) {
+      setAiStatus(`사진 불러오는 중... (${updated.length + 1}/${targetItems.length}) ${it.file.name}`);
+      try {
+        // eslint-disable-next-line no-await-in-loop
+        const dataUrl = await resizeImageForCaption(it.file);
+        updated.push({ ...it, localResizedDataUrl: dataUrl });
+      } catch {
+        // 여기서 실패해도 그대로 넘어간다 — 이후 실제 캡션 생성 단계에서 같은 실패가 다시
+        // 일어나면서 사용자에게 보일 에러 메시지가 정상적으로 채워진다.
+        updated.push(it);
+      }
+    }
+    return updated;
+  };
+
+  // 캡션 생성을 시작하는 단일 진입점 — 자동 트리거(파일 선택 직후)와 수동 "전체 사진 AI로
+  // 설명 생성" 버튼 둘 다 이걸 거치게 해서, 로컬 모드면 항상 preloadLocalImages부터 먼저
+  // 돌게 한다(둘 중 하나만 프리로드를 거치면, 다른 경로로 시작했을 때 캐시 없이 바로
+  // 원본 File을 늦게 읽으려다 다시 같은 문제가 재현된다).
+  const startGeneratingCaptions = (targetItems: UploadItem[]) => {
+    if (captionMode === 'local') {
+      preloadLocalImages(targetItems).then((preloaded) => {
+        setItems((prev) => prev.map((p) => preloaded.find((u) => u.id === p.id) || p));
+        handleGenerateAllCaptions(preloaded);
+      });
+    } else {
+      handleGenerateAllCaptions(targetItems);
+    }
+  };
+
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
     if (files.length === 0) return;
@@ -189,7 +223,7 @@ export const GithubPhotoUploader: React.FC = () => {
     // 로컬 모드는 키가 필요 없으니 사진 선택 즉시 자동 분석 시작. Anthropic 모드는 키가
     // 저장돼 있을 때만 자동 시작.
     if (captionMode === 'local' || anthropicKey.trim()) {
-      handleGenerateAllCaptions(newItems);
+      startGeneratingCaptions(newItems);
     }
   };
 
@@ -423,7 +457,7 @@ export const GithubPhotoUploader: React.FC = () => {
             )}
 
             <button
-              onClick={() => handleGenerateAllCaptions(items)}
+              onClick={() => startGeneratingCaptions(items)}
               className="btn-secondary"
               style={{ width: '100%', justifyContent: 'center', borderColor: 'rgba(139, 92, 246, 0.4)' }}
               disabled={aiGeneratingIds.size > 0 || (captionMode === 'anthropic' && !anthropicKey.trim())}
