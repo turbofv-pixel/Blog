@@ -610,8 +610,13 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
                     다운로드
                   </a>
                   <span style={{ display: 'flex', flexDirection: 'column', gap: '1px', minWidth: '90px' }}>
-                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace' }}>
-                      {src.split('/').pop()}
+                    {/* Full repo-relative path (not just the filename) — this is the exact
+                        spot a MosaicStudio-processed rabbit_*.jpg needs to land once uploaded
+                        via GitHub's web upload UI. Showing only the basename here meant the
+                        destination folder only ever existed in chat, which is exactly the gap
+                        that prompted this list to show captions in the first place. */}
+                    <span style={{ fontSize: '0.78rem', color: 'var(--text-muted)', fontFamily: 'monospace', wordBreak: 'break-all' }}>
+                      public{src}
                     </span>
                     {alt && (
                       <span style={{ fontSize: '0.72rem', color: 'var(--text-muted)', opacity: 0.75 }}>
