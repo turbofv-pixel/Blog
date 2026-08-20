@@ -2,7 +2,14 @@ import React, { useState } from 'react';
 import { Github, GitCommit, UploadCloud, FolderCheck, Copy, Check, Terminal, ShieldCheck, Sparkles } from 'lucide-react';
 import { GithubPhotoUploader } from './GithubPhotoUploader';
 
-export const GithubBackupManager: React.FC = () => {
+interface GithubBackupManagerProps {
+  // 설명 메모 업로드 직후 "이어서 토끼 모자이크 처리하기"를 누르면, 같은 사진들을 모자이크
+  // 스튜디오 탭으로 그대로 넘겨준다 — App 컴포넌트가 실제 탭 전환/파일 전달을 담당하므로
+  // 여기서는 그냥 그대로 흘려보내기만 한다.
+  onContinueToMosaic?: (files: File[]) => void;
+}
+
+export const GithubBackupManager: React.FC<GithubBackupManagerProps> = ({ onContinueToMosaic }) => {
   const [copiedCmd, setCopiedCmd] = useState<string | null>(null);
 
   const copyToClipboard = (text: string, id: string) => {
@@ -16,7 +23,7 @@ export const GithubBackupManager: React.FC = () => {
 
   return (
     <>
-      <GithubPhotoUploader />
+      <GithubPhotoUploader onContinueToMosaic={onContinueToMosaic} />
       <div className="glass-panel animate-fade-in" style={{ padding: '28px' }}>
 
       <div style={{ display: 'flex', alignItems: 'center', gap: '12px', marginBottom: '20px' }}>

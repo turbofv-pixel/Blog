@@ -189,6 +189,37 @@ function drawRabbit(
   ctx.drawImage(bunny, dx, dy, diam, diam);
 }
 
+// 불펌(무단 도용) 방지용 "대왕토끼" 표식 — 처리된 사진/영상 오른쪽 아래 구석에 작게 찍는다.
+// 얼굴 스티커와는 무관하게 항상 같은 자리에 남는 워터마크라, 미리보기/최종 다운로드/영상
+// 프레임 전부 이 함수 하나만 부르면 된다. 배경이 밝든 어둡든 잘 보이도록 흰 테두리 +
+// 진한 채우기로 텍스트를 그린다.
+function drawWatermark(ctx: CanvasRenderingContext2D, canvasWidth: number, canvasHeight: number, bunny: HTMLImageElement | null) {
+  const pad = Math.max(8, Math.round(canvasWidth * 0.014));
+  const logoSize = Math.max(24, Math.round(canvasWidth * 0.05));
+  const fontSize = Math.max(11, Math.round(logoSize * 0.46));
+  const text = '대왕토끼';
+
+  ctx.save();
+  ctx.globalAlpha = 0.62;
+  ctx.font = `700 ${fontSize}px "Pretendard", "Malgun Gothic", sans-serif`;
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'bottom';
+
+  const logoX = canvasWidth - pad - logoSize;
+  const logoY = canvasHeight - pad - logoSize;
+  if (bunny) {
+    ctx.drawImage(bunny, logoX, logoY, logoSize, logoSize);
+  }
+  const textX = (bunny ? logoX - 6 : canvasWidth - pad);
+  const textY = canvasHeight - pad - (bunny ? (logoSize - fontSize) / 2 : 0);
+  ctx.lineWidth = Math.max(2, fontSize * 0.16);
+  ctx.strokeStyle = 'rgba(255,255,255,0.9)';
+  ctx.strokeText(text, textX, textY);
+  ctx.fillStyle = 'rgba(20,20,20,0.85)';
+  ctx.fillText(text, textX, textY);
+  ctx.restore();
+}
+
 function renderFacesToCanvas(
   canvas: HTMLCanvasElement,
   img: HTMLImageElement,
@@ -206,6 +237,7 @@ function renderFacesToCanvas(
     if (mode === 'rabbit' && bunny) drawRabbit(ctx, bunny, face);
     else drawPixelate(ctx, img, face, pixelSize);
   });
+  drawWatermark(ctx, canvas.width, canvas.height, bunny);
 }
 
 function renderToDataUrl(
@@ -241,7 +273,16 @@ function downloadDataUrl(dataUrl: string, filename: string) {
   link.click();
 }
 
-export const MosaicStudio: React.FC = () => {
+interface MosaicStudioProps {
+  // "GitHub 백업 관리" 탭에서 설명 메모를 먼저 올린 뒤 "이어서 모자이크 처리하기"를 누르면,
+  // 같은 사진 File들을 다시 선택할 필요 없이 여기로 바로 넘겨받아 자동으로 배치 처리를
+  // 시작한다. 다 받으면 onFilesConsumed()로 부모(App) 쪽의 대기열을 비워서, 이 탭을 나갔다
+  // 다시 들어와도 같은 파일이 또 로드되지 않게 한다.
+  initialFiles?: File[] | null;
+  onFilesConsumed?: () => void;
+}
+
+export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFilesConsumed }) => {
   const [mediaKind, setMediaKind] = useState<MediaKind | null>(null);
   const [mode, setMode] = useState<MosaicMode>('rabbit');
   const [pixelSize, setPixelSize] = useState<number>(14);
@@ -373,6 +414,17 @@ export const MosaicStudio: React.FC = () => {
     setIsProcessing(false);
     setStatusMessage(`✨ 사진 ${items.length}장 처리 완료! 자동으로 못 찾은 얼굴이 있으면 "얼굴 직접 추가"로 눌러서 채워주세요.`);
   };
+
+  // "GitHub 백업 관리" 탭에서 설명 메모를 올린 뒤 넘겨준 파일들을, 이 탭에 들어오는 순간(또는
+  // 넘겨준 시점에 이미 이 탭이 열려있으면 그 즉시) 자동으로 같은 배치 처리 경로(startImageBatch)
+  // 로 흘려보낸다 — 사용자가 같은 사진을 다시 선택할 필요가 없다.
+  useEffect(() => {
+    if (initialFiles && initialFiles.length > 0) {
+      startImageBatch(initialFiles, false);
+      onFilesConsumed?.();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialFiles]);
 
   const processOneImage = async (id: string, objectUrl: string) => {
     setImages((prev) => prev.map((it) => (it.id === id ? { ...it, status: 'detecting' } : it)));
@@ -614,6 +666,7 @@ export const MosaicStudio: React.FC = () => {
             drawPixelate(ctx, video, { x: t.cx - t.r, y: t.cy - t.r, width: t.r * 2, height: t.r * 2 }, pixelSize);
           }
         });
+        drawWatermark(ctx, canvas.width, canvas.height, bunny);
 
         const progress = video.duration ? video.currentTime / video.duration : 0;
         setVideoItems((prev) => prev.map((it) => (it.id === id ? { ...it, progress } : it)));

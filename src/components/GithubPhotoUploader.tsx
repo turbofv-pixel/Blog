@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste, Sparkles } from 'lucide-react';
+import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste, Sparkles, Rabbit } from 'lucide-react';
 import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
 import { ANTHROPIC_API_KEY_STORAGE_KEY, generatePhotoCaptionFromBuffer } from '../lib/anthropicCaption';
 import { resizeBufferForCaption, classifyResizedImage } from '../lib/localCaption';
@@ -63,7 +63,14 @@ function describeError(err: unknown): string {
   return String(err);
 }
 
-export const GithubPhotoUploader: React.FC = () => {
+interface GithubPhotoUploaderProps {
+  // 설명 메모(+선택적으로 사진)를 GitHub에 올리고 나면, 같은 사진들을 다시 선택할 필요 없이
+  // 바로 이어서 "토끼 모자이크 스튜디오"로 넘겨서 얼굴 가리기 작업을 시작할 수 있게 해준다
+  // (메타정보 먼저 남기고 → 업로드 → 바로 이어서 모자이크, 순서를 한 흐름으로 잇기 위함).
+  onContinueToMosaic?: (files: File[]) => void;
+}
+
+export const GithubPhotoUploader: React.FC<GithubPhotoUploaderProps> = ({ onContinueToMosaic }) => {
   const [items, setItems] = useState<UploadItem[]>([]);
   const [bulkPasteText, setBulkPasteText] = useState<string>('');
   const [token, setToken] = useState<string>(() => localStorage.getItem(GITHUB_TOKEN_KEY) || '');
@@ -72,6 +79,7 @@ export const GithubPhotoUploader: React.FC = () => {
   const [uploadPhotos, setUploadPhotos] = useState<boolean>(false);
   const [showToken, setShowToken] = useState<boolean>(false);
   const [uploading, setUploading] = useState<boolean>(false);
+  const [justUploaded, setJustUploaded] = useState<boolean>(false);
   const [uploadedCount, setUploadedCount] = useState<number>(0);
   const [status, setStatus] = useState<string | null>(null);
 
@@ -273,6 +281,7 @@ export const GithubPhotoUploader: React.FC = () => {
     setItems(newItems);
     setStatus(null);
     setAiStatus(null);
+    setJustUploaded(false);
     e.target.value = '';
     // 촬영 시각은 AI 캡션 모드/키 여부와 완전히 무관하게 사진을 선택하는 즉시 항상 뽑는다
     // (사진 시간대별로 글을 쓸 수 있게 하기 위한 메타정보). AI 캡션 자동 생성은 로컬 모드는
@@ -386,6 +395,7 @@ export const GithubPhotoUploader: React.FC = () => {
     setUploading(true);
     setUploadedCount(0);
     setStatus(null);
+    setJustUploaded(false);
 
     let ok = 0;
     if (uploadPhotos) {
@@ -420,11 +430,16 @@ export const GithubPhotoUploader: React.FC = () => {
     }
 
     setUploading(false);
+    setJustUploaded(true);
     setStatus(
       (uploadPhotos ? `✨ 사진 ${ok}장 + 설명 메모` : '✨ 설명 메모') +
         ` GitHub에 업로드 완료! (public/images/${folderPath}/, "${branch}" 브랜치) ` +
         `이제 Claude한테 "${folderPath} 폴더${uploadPhotos ? ' 사진으로' : ' 설명으로'} 글 써줘"라고 말해보세요.`
     );
+  };
+
+  const handleContinueToMosaic = () => {
+    onContinueToMosaic?.(items.map((it) => it.file));
   };
 
   return (
@@ -737,6 +752,17 @@ export const GithubPhotoUploader: React.FC = () => {
             <p style={{ fontSize: '0.82rem', marginTop: '10px', color: status.startsWith('❌') ? '#f87171' : status.startsWith('⚠️') ? '#fbbf24' : '#03C75A' }}>
               {status}
             </p>
+          )}
+
+          {justUploaded && onContinueToMosaic && (
+            <button
+              onClick={handleContinueToMosaic}
+              className="btn-naver"
+              style={{ width: '100%', justifyContent: 'center', marginTop: '10px' }}
+            >
+              <Rabbit size={16} />
+              이어서 토끼 모자이크 처리하기 ({items.length}장)
+            </button>
           )}
 
           <div

@@ -2630,6 +2630,16 @@ spec:
 
 export const App: React.FC = () => {
   const [activeTab, setActiveTab] = useState<'posts' | 'mosaic' | 'github'>('posts');
+  // "GitHub 백업 관리" 탭에서 설명 메모를 올린 뒤 "이어서 토끼 모자이크 처리하기"를 누르면,
+  // 같은 사진 File들을 여기 담아뒀다가 모자이크 스튜디오 탭으로 전달한다 — 메타정보 먼저 →
+  // 업로드 → 바로 이어서 모자이크, 라는 한 흐름으로 잇기 위함. 모자이크 스튜디오가 다 받으면
+  // 다시 null로 비워서, 그 탭을 벗어났다 돌아와도 같은 사진이 또 로드되지 않게 한다.
+  const [pendingMosaicFiles, setPendingMosaicFiles] = useState<File[] | null>(null);
+
+  const handleContinueToMosaic = (files: File[]) => {
+    setPendingMosaicFiles(files);
+    setActiveTab('mosaic');
+  };
 
   return (
     <div style={{ maxWidth: '1280px', margin: '0 auto', padding: '24px 16px' }}>
@@ -2639,8 +2649,10 @@ export const App: React.FC = () => {
       {/* Main Tab Content */}
       <main>
         {activeTab === 'posts' && <PostManager initialPosts={samplePosts} />}
-        {activeTab === 'mosaic' && <MosaicStudio />}
-        {activeTab === 'github' && <GithubBackupManager />}
+        {activeTab === 'mosaic' && (
+          <MosaicStudio initialFiles={pendingMosaicFiles} onFilesConsumed={() => setPendingMosaicFiles(null)} />
+        )}
+        {activeTab === 'github' && <GithubBackupManager onContinueToMosaic={handleContinueToMosaic} />}
       </main>
 
       {/* Footer */}
