@@ -70,39 +70,41 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   });
 }
 
-// 파일의 처음 몇 바이트(매직 넘버)로 실제 이미지 포맷을 알아낸다. 확장자가 .jpg여도 안드로이드
-// 카메라가 "고효율" 설정으로 실제로는 HEIC/HEIF로 저장하는 경우가 흔한데, 크롬 안드로이드는
-// HEIC를 <img>/createImageBitmap 어느 쪽으로도 디코딩하지 못한다 — 크기(resize 옵션)를
-// 224→160→96으로 줄여도 매번 똑같이 실패하는 게 실기기에서 확인됐는데, 이건 메모리 문제라면
-// 나올 수 없는 패턴이라(크기를 줄였는데도 무조건 실패) 포맷 자체가 안 맞는 쪽에 무게가 실린다.
-// 이 함수는 그 여부를 실패 메시지에 정확히 남겨서 다음 진단에 추측이 필요 없게 한다.
-async function detectImageFormat(file: File): Promise<string> {
-  try {
-    const buf = await file.slice(0, 16).arrayBuffer();
-    const b = new Uint8Array(buf);
-    if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'JPEG';
-    if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'PNG';
-    if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46) return 'RIFF/WebP';
-    if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
-      // ftyp 박스 — ISO base media file format(HEIC/HEIF, AVIF, MP4 등)
-      const brand = String.fromCharCode(b[8], b[9], b[10], b[11]);
-      return `ftyp/${brand}`;
-    }
-    return `알수없음(${Array.from(b.slice(0, 4)).map((n) => n.toString(16).padStart(2, '0')).join(' ')})`;
-  } catch {
-    return '알수없음(읽기 실패)';
+// 이미 갖고 있는 바이트(ArrayBuffer)의 처음 몇 바이트(매직 넘버)로 실제 이미지 포맷을
+// 알아낸다. 확장자가 .jpg여도 안드로이드 카메라가 "고효율" 설정으로 실제로는 HEIC/HEIF로
+// 저장하는 경우가 흔한데, 크롬 안드로이드는 HEIC를 <img>/createImageBitmap 어느 쪽으로도
+// 디코딩하지 못한다 — 이 함수는 그 여부를 실패 메시지에 정확히 남겨서 다음 진단에 추측이
+// 필요 없게 한다.
+function detectImageFormat(buf: ArrayBuffer): string {
+  const b = new Uint8Array(buf.slice(0, 16));
+  if (b[0] === 0xff && b[1] === 0xd8 && b[2] === 0xff) return 'JPEG';
+  if (b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) return 'PNG';
+  if (b[0] === 0x52 && b[1] === 0x49 && b[2] === 0x46 && b[3] === 0x46) return 'RIFF/WebP';
+  if (b[4] === 0x66 && b[5] === 0x74 && b[6] === 0x79 && b[7] === 0x70) {
+    // ftyp 박스 — ISO base media file format(HEIC/HEIF, AVIF, MP4 등)
+    const brand = String.fromCharCode(b[8], b[9], b[10], b[11]);
+    return `ftyp/${brand}`;
   }
+  return `알수없음(${Array.from(b.slice(0, 4)).map((n) => n.toString(16).padStart(2, '0')).join(' ')})`;
 }
 
 // <img>로 로드하면 브라우저가 카메라 원본 해상도(수천만 화소) 그대로 압축 해제한 비트맵을
 // 먼저 통째로 메모리에 올린 뒤에야 축소할 수 있다. createImageBitmap의 resize 옵션을 쓰면
 // 브라우저가 디코딩과 동시에(또는 그와 가깝게) 축소할 수 있어 피크 메모리가 훨씬 작다. 화면에
 // 보여줄 게 아니라 분류 모델에 넣을 용도라 정사각형으로 눌러도 상관없다.
-async function fileToResizedDataUrl(file: File, maxDim: number): Promise<string> {
+//
+// 원본 File이 아니라 이미 메모리에 읽어둔 ArrayBuffer를 받는다 — 실기기(구글 포토에서
+// 다운로드한 사진 등)에서, 원본 File을 서로 다른 API로 두 번째 건드리면(예: EXIF 읽기 한 번,
+// 그 다음 이미지 디코딩 한 번) 두 번째 접근이 "파일을 읽지 못함"으로 실패하는 게 확인됐다 —
+// 그 File이 가리키는 스트림이 한 번만 유효한 것으로 보인다. 그래서 원본 File은 호출한 쪽에서
+// 딱 한 번만 통째로 읽게 하고, 여기서는 그 결과(버퍼)로 만든 완전히 독립적인 새 Blob만
+// 다룬다 — 원본 스트림을 다시 열지 않는다.
+async function bufferToResizedDataUrl(buf: ArrayBuffer, mimeType: string, maxDim: number): Promise<string> {
+  const blob = new Blob([buf], { type: mimeType || 'image/jpeg' });
   let bitmapErr: unknown;
   if (typeof createImageBitmap === 'function') {
     try {
-      const bitmap = await createImageBitmap(file, {
+      const bitmap = await createImageBitmap(blob, {
         resizeWidth: maxDim,
         resizeHeight: maxDim,
         resizeQuality: 'medium',
@@ -124,7 +126,7 @@ async function fileToResizedDataUrl(file: File, maxDim: number): Promise<string>
       bitmapErr = err;
     }
   }
-  const objectUrl = URL.createObjectURL(file);
+  const objectUrl = URL.createObjectURL(blob);
   try {
     const img = await loadImage(objectUrl);
     const scale = Math.min(1, maxDim / Math.max(img.naturalWidth, img.naturalHeight));
@@ -138,7 +140,7 @@ async function fileToResizedDataUrl(file: File, maxDim: number): Promise<string>
     ctx.drawImage(img, 0, 0, w, h);
     return canvas.toDataURL('image/jpeg', 0.85);
   } catch (imgErr) {
-    const format = await detectImageFormat(file);
+    const format = detectImageFormat(buf);
     if (/^ftyp\/(heic|heix|heif|hevc|hevx|mif1|msf1)$/i.test(format)) {
       // 크롬 안드로이드는 HEIC/HEIF를 <img>/createImageBitmap 어느 쪽으로도 디코딩하지 못한다.
       // 확장자가 .jpg여도 휴대폰 카메라의 "고효율 사진" 설정 때문에 실제로는 HEIC로 저장되는
@@ -163,18 +165,16 @@ function sleep(ms: number): Promise<void> {
   });
 }
 
-// 크기를 줄여가며, 또 크기마다 약간의 대기 후 재시도한다. 사진 여러 장을 한꺼번에 선택해서
-// 연달아 빠르게 읽으면(자동 일괄 생성) 상당수가 "파일을 읽지 못함"으로 실패하는 게 실기기에서
-// 확인됐다 — 특정 파일이나 해상도 문제가 아니라(같은 배치에서 일부는 성공, 대부분은 실패)
-// 안드로이드 쪽 파일 접근이 순간적으로 밀리는 것으로 보인다. 즉시 재시도보다 잠깐 쉬었다
-// 재시도하는 쪽이 이런 일시적 문제에는 더 효과적이다.
-async function fileToResizedDataUrlWithRetry(file: File): Promise<string> {
+// 크기를 줄여가며, 또 크기마다 약간의 대기 후 재시도한다. 이제 원본 File이 아니라 이미
+// 메모리에 있는 버퍼로 재시도하므로, 원본 파일 접근 자체는 이 재시도 루프와 무관하다 — 순수
+// 디코딩(형식 문제 등)에 대한 재시도로서만 의미가 있다.
+async function bufferToResizedDataUrlWithRetry(buf: ArrayBuffer, mimeType: string): Promise<string> {
   let lastErr: unknown;
   for (const dim of RESIZE_ATTEMPTS) {
     for (let attempt = 0; attempt < 2; attempt++) {
       try {
         // eslint-disable-next-line no-await-in-loop
-        return await fileToResizedDataUrl(file, dim);
+        return await bufferToResizedDataUrl(buf, mimeType, dim);
       } catch (err) {
         lastErr = err;
         // eslint-disable-next-line no-await-in-loop
@@ -185,15 +185,19 @@ async function fileToResizedDataUrlWithRetry(file: File): Promise<string> {
   throw lastErr instanceof Error ? lastErr : new Error(String(lastErr));
 }
 
-// 원본 File을 축소된 data URL로 바꾼다 — 이 단계만 원본 파일 바이트를 실제로 읽는다.
-// 호출한 쪽에서 결과를 캐싱해두면, 같은 사진을 다시 분석할 때(예: "다시 생성" 버튼) 이
-// 함수를 또 부를 필요가 없다. 실기기에서 첫 번째 자동 분석(파일 선택 직후)은 성공하는데
-// 나중에 같은 File을 또 읽으려 하면("다시 생성" 버튼) 디코딩은커녕 파일 바이트 자체를 못
-// 읽는 경우가 확인됐다 — 안드로이드의 사진 선택기가 넘겨준 File의 접근 권한이 일회성/시간
-// 제한적일 수 있다는 뜻으로 보인다. 그래서 원본 파일은 최초 1회만 읽고, 그 결과(축소된
-// data URL)를 재사용하는 게 유일한 안정적인 방법이다.
+// 이미 메모리에 읽어둔 원본 파일 버퍼로부터 축소된 data URL을 만든다 — 원본 File을 다시
+// 건드리지 않는다. 호출한 쪽(GithubPhotoUploader)이 File을 딱 한 번 읽어서 이 버퍼를
+// 캐싱해두고, EXIF 촬영 시각 추출과 이 함수 양쪽에 재사용한다.
+export async function resizeBufferForCaption(buf: ArrayBuffer, mimeType: string): Promise<string> {
+  return bufferToResizedDataUrlWithRetry(buf, mimeType);
+}
+
+// 원본 File을 직접 받아 축소하는 예전 방식 — 호출한 쪽에서 버퍼를 미리 캐싱해두지 못한
+// 경우(예: 격리된 단독 호출)를 위한 편의 함수. 이 파일을 이전에 이미 한 번이라도 읽은 적이
+// 있다면 resizeBufferForCaption을 쓰는 쪽이 더 안전하다.
 export async function resizeImageForCaption(file: File): Promise<string> {
-  return fileToResizedDataUrlWithRetry(file);
+  const buf = await file.arrayBuffer();
+  return bufferToResizedDataUrlWithRetry(buf, file.type);
 }
 
 // 이미 축소돼 있는 data URL에 대해서만 분류를 돌린다 — 원본 File을 다시 건드리지 않는다.

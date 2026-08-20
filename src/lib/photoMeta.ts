@@ -59,10 +59,11 @@ function parseExifDate(str: string): Date | null {
   return Number.isNaN(date.getTime()) ? null : date;
 }
 
-async function readExifDateTime(file: File): Promise<Date | null> {
+// 이미 메모리에 읽어둔 버퍼(원본 File 전체 또는 그 앞부분)에서 EXIF를 파싱한다 — 원본 File을
+// 다시 건드리지 않는다(구글 포토 등에서 받은 파일은 File을 두 번째로 건드리면 실패하는 게
+// 확인됐다).
+function readExifDateTimeFromBuffer(buf: ArrayBuffer): Date | null {
   try {
-    // EXIF는 파일 앞부분에 있다 — 256KB면 대부분(썸네일 포함 EXIF라도) 충분히 커버된다.
-    const buf = await file.slice(0, 256 * 1024).arrayBuffer();
     const view = new DataView(buf);
     if (view.byteLength < 4 || view.getUint16(0) !== 0xffd8) return null; // JPEG(SOI)가 아님
 
@@ -123,13 +124,23 @@ async function readExifDateTime(file: File): Promise<Date | null> {
   return null;
 }
 
-export async function getPhotoTimestamp(file: File): Promise<PhotoTimestamp> {
-  const exifDate = await readExifDateTime(file);
+// 이미 메모리에 읽어둔 버퍼로부터 촬영 시각을 알아낸다 — 원본 File을 다시 읽지 않는다.
+// 호출한 쪽(GithubPhotoUploader)이 File을 딱 한 번 읽어서 이 버퍼를 캐싱해두고, 이미지
+// 리사이즈와 이 함수 양쪽에 재사용한다.
+export function getPhotoTimestampFromBuffer(buf: ArrayBuffer, fallbackLastModifiedMs?: number): PhotoTimestamp {
+  const exifDate = readExifDateTimeFromBuffer(buf);
   if (exifDate) return { date: exifDate, source: 'exif' };
-  if (file.lastModified) {
-    return { date: new Date(file.lastModified), source: 'file-modified' };
+  if (fallbackLastModifiedMs) {
+    return { date: new Date(fallbackLastModifiedMs), source: 'file-modified' };
   }
   return null;
+}
+
+// 원본 File을 직접 받아 처리하는 예전 방식 — 호출한 쪽에서 버퍼를 미리 캐싱해두지 못한
+// 경우(예: 격리된 단독 호출)를 위한 편의 함수.
+export async function getPhotoTimestamp(file: File): Promise<PhotoTimestamp> {
+  const buf = await file.slice(0, 256 * 1024).arrayBuffer();
+  return getPhotoTimestampFromBuffer(buf, file.lastModified);
 }
 
 // 사람이 읽기 좋은 "2026-08-08 15:44" 형식으로 포맷 (초 단위는 캡션 용도로는 불필요).

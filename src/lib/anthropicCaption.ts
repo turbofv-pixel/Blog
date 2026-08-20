@@ -15,15 +15,25 @@ function loadImage(src: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     img.onload = () => resolve(img);
-    img.onerror = reject;
+    // img.onerror는 실패 이유가 담긴 Error가 아니라 브라우저의 raw Event 객체를 넘겨준다 —
+    // 그대로 reject하면 상위에서 "[object Event]"로만 찍혀서 원인을 알 수 없다.
+    img.onerror = () => reject(new Error('이미지를 불러오지 못했습니다 (지원하지 않는 형식이거나 손상된 파일일 수 있어요).'));
     img.src = src;
   });
 }
 
 // 캡션 API로 보내기 전에 리사이즈 + JPEG 재인코딩 — 원본 그대로 보내면 페이로드가 크고
 // 느려지는데, 캡션 생성 목적으로는 이 정도 해상도로도 충분하다.
-async function fileToResizedBase64(file: File): Promise<{ base64: string; mediaType: string }> {
-  const objectUrl = URL.createObjectURL(file);
+//
+// 원본 File이 아니라 이미 메모리에 읽어둔 ArrayBuffer를 받는다 — 실기기(특히 구글 포토에서
+// 다운로드한 사진)에서, 같은 원본 File을 서로 다른 API로 두 번째 건드리면(예: 촬영 시각용
+// EXIF 읽기 한 번, 그 다음 이 캡션용 이미지 인코딩 한 번) 두 번째 접근이 실패하는 게
+// 확인됐다 — 그 File이 가리키는 스트림이 한 번만 유효한 것으로 보인다. 그래서 원본 File은
+// 호출한 쪽(GithubPhotoUploader)에서 딱 한 번만 통째로 읽게 하고, 여기서는 그 버퍼로 만든
+// 완전히 독립적인 새 Blob만 다룬다.
+async function bufferToResizedBase64(buf: ArrayBuffer, mimeType: string): Promise<{ base64: string; mediaType: string }> {
+  const blob = new Blob([buf], { type: mimeType || 'image/jpeg' });
+  const objectUrl = URL.createObjectURL(blob);
   try {
     const img = await loadImage(objectUrl);
     const scale = Math.min(1, MAX_IMAGE_DIM / Math.max(img.naturalWidth, img.naturalHeight));
@@ -42,9 +52,20 @@ async function fileToResizedBase64(file: File): Promise<{ base64: string; mediaT
   }
 }
 
-export async function generatePhotoCaption(file: File, apiKey: string): Promise<string> {
-  const { base64, mediaType } = await fileToResizedBase64(file);
+export async function generatePhotoCaptionFromBuffer(buf: ArrayBuffer, mimeType: string, apiKey: string): Promise<string> {
+  const { base64, mediaType } = await bufferToResizedBase64(buf, mimeType);
+  return callAnthropic(base64, mediaType, apiKey);
+}
 
+// 원본 File을 직접 받는 예전 방식 — 호출한 쪽에서 버퍼를 미리 캐싱해두지 못한 경우(예: 격리된
+// 단독 호출)를 위한 편의 함수. 이 파일을 이전에 이미 한 번이라도 읽은 적이 있다면
+// generatePhotoCaptionFromBuffer를 쓰는 쪽이 더 안전하다.
+export async function generatePhotoCaption(file: File, apiKey: string): Promise<string> {
+  const buf = await file.arrayBuffer();
+  return generatePhotoCaptionFromBuffer(buf, file.type, apiKey);
+}
+
+async function callAnthropic(base64: string, mediaType: string, apiKey: string): Promise<string> {
   const res = await fetch('https://api.anthropic.com/v1/messages', {
     method: 'POST',
     headers: {

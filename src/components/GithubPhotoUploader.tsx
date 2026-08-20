@@ -1,9 +1,9 @@
 import React, { useState } from 'react';
 import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste, Sparkles } from 'lucide-react';
 import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
-import { ANTHROPIC_API_KEY_STORAGE_KEY, generatePhotoCaption } from '../lib/anthropicCaption';
-import { resizeImageForCaption, classifyResizedImage } from '../lib/localCaption';
-import { getPhotoTimestamp, formatPhotoTimestamp } from '../lib/photoMeta';
+import { ANTHROPIC_API_KEY_STORAGE_KEY, generatePhotoCaptionFromBuffer } from '../lib/anthropicCaption';
+import { resizeBufferForCaption, classifyResizedImage } from '../lib/localCaption';
+import { getPhotoTimestampFromBuffer, formatPhotoTimestamp } from '../lib/photoMeta';
 
 type CaptionMode = 'local' | 'anthropic';
 
@@ -25,9 +25,14 @@ interface UploadItem {
   // AI 태그만으로는 정보가 부족할 수 있어서(특히 무료 로컬 모드는 거친 영어 태그만 나옴)
   // 둘 다 따로 입력해서 같이 업로드할 수 있게 한다.
   userNote: string;
-  // 무료(로컬) 모드로 한 번 축소에 성공한 사진의 결과(data URL)를 캐싱해둔다. 실기기에서
-  // 원본 File을 두 번째로 읽으려 하면(예: "다시 생성" 버튼) 파일 바이트 자체를 못 읽는 경우가
-  // 확인돼서, 원본은 최초 1회만 읽고 그 다음부턴 이 캐시를 재사용한다.
+  // 원본 File 전체를 통째로 읽은 바이트 — 배치당 딱 한 번만 읽어서 캐싱해둔다. 실기기(특히
+  // 구글 포토에서 다운로드한 사진)에서, 같은 File을 서로 다른 API로 두 번째 건드리면(예:
+  // EXIF 읽기 한 번, 그 다음 이미지 리사이즈/AI 캡션용 인코딩 한 번을 따로) 두 번째 접근부터
+  // "파일을 읽지 못함"으로 실패하는 게 반복 확인됐다 — 그 File이 가리키는 스트림이 한 번만
+  // 유효한 것으로 보인다. 그래서 촬영 시각 추출과 이미지 리사이즈(로컬/Anthropic 모드 모두)
+  // 전부 이 캐시된 버퍼에서 처리하고, 원본 File은 다시 읽지 않는다.
+  rawBuffer?: ArrayBuffer;
+  // 무료(로컬) 모드로 한 번 축소에 성공한 사진의 결과(data URL) 캐시.
   localResizedDataUrl?: string;
   // 사진이 실제로 찍힌 시각(EXIF, 없으면 파일 수정 시각으로 대체) — ISO 문자열로 저장해서
   // captions.md에 같이 올리고, 정렬 기준으로도 쓴다. undefined = 아직 추출 시도 전,
@@ -102,11 +107,15 @@ export const GithubPhotoUploader: React.FC = () => {
       let caption: string;
       if (mode === 'local') {
         // 원본 File은 최초 1회만 읽는다 — 실기기에서 같은 File을 두 번째로 읽으려 하면(예:
-        // "다시 생성" 버튼) 파일 바이트 자체를 못 읽는 경우가 확인됐다. 이미 축소해둔 결과가
-        // 있으면 그걸 재사용하고, 없을 때만 원본을 읽어서 캐시에 남긴다.
+        // "다시 생성" 버튼) 파일 바이트 자체를 못 읽는 경우가 확인됐다. 이미 축소해둔 결과이
+        // 있으면 그걸 재사용하고, 없으면 캐싱해둔 rawBuffer(있어야 정상 — preloadFileMetadata가
+        // 먼저 돈다)로 리사이즈한다. rawBuffer조차 없는 예외적인 경우에만 최후의 수단으로
+        // 원본 File을 직접 읽는다.
         let dataUrl = item.localResizedDataUrl;
         if (!dataUrl) {
-          dataUrl = await resizeImageForCaption(item.file);
+          dataUrl = item.rawBuffer
+            ? await resizeBufferForCaption(item.rawBuffer, item.file.type)
+            : await resizeBufferForCaption(await item.file.arrayBuffer(), item.file.type);
           const resolvedDataUrl = dataUrl;
           setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, localResizedDataUrl: resolvedDataUrl } : it)));
         }
@@ -115,7 +124,8 @@ export const GithubPhotoUploader: React.FC = () => {
           setAiStatus(`모델 준비 중(최초 1회만, 이후엔 인터넷 없이도 즉시 실행)... ${p.file || p.status}${pct}`);
         });
       } else {
-        caption = await generatePhotoCaption(item.file, key);
+        const buf = item.rawBuffer || (await item.file.arrayBuffer());
+        caption = await generatePhotoCaptionFromBuffer(buf, item.file.type, key);
       }
       setItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, caption } : it)));
       return null;
@@ -186,15 +196,17 @@ export const GithubPhotoUploader: React.FC = () => {
   // 실기기(안드로이드)에서, 사진을 여러 장 선택한 뒤 시간이 좀 지나서(모델 로딩을 기다리거나,
   // 다른 사진들을 먼저 처리하는 동안) 원본 File을 읽으려 하면 실패하는 게 반복 확인됐다 —
   // 지연 재시도를 넣어도 마찬가지였다. 즉 원본 파일 접근 자체가 선택 직후 짧은 시간만
-  // 유효한 것으로 보인다. 그래서 느린 AI 모델 로딩/분류를 시작하기 전에, 선택 직후 최대한
-  // 빨리 모든 사진을 순서대로 미리 읽어서 (1) 촬영 시각과 (2) 로컬 모드면 축소본(data URL)까지
-  // 한 파일당 한 번의 접근 안에서 같이 뽑아 캐싱해두고, 실제 분류/업로드는 그 캐시만
-  // 사용하게 한다 — 그러면 얼마나 오래 걸리든 원본 파일 접근 타이밍과 무관해진다. 촬영 시각은
-  // 캡션 모드와 무관하게 항상 뽑는다(사진 시간대별로 글을 쓸 수 있게 하기 위한 메타정보).
+  // 유효한 것으로 보인다 — 더 결정적으로는, 같은 File을 서로 다른 API로 "두 번째" 건드리는
+  // 순간(예: EXIF 읽기 뒤에 이미지 디코딩) 그 두 번째 접근이 실패하는 게 확인됐다(구글
+  // 포토에서 받은 사진 등, 실기기 재현). 그래서 원본 File은 아이템당 딱 한 번만
+  // file.arrayBuffer()로 통째로 읽어 rawBuffer에 캐싱해두고, 촬영 시각 추출과 (필요하면)
+  // 이미지 리사이즈 둘 다 그 같은 버퍼에서 처리한다 — 원본 File을 두 번째로 여는 일 자체가
+  // 없게 만드는 게 핵심이다. 촬영 시각은 캡션 모드와 무관하게 항상 뽑는다(사진 시간대별로
+  // 글을 쓸 수 있게 하기 위한 메타정보).
   const preloadFileMetadata = async (targetItems: UploadItem[], includeResize: boolean): Promise<UploadItem[]> => {
     let working = targetItems.map((it) => ({ ...it }));
     const total = working.length;
-    const needsWork = (it: UploadItem) => it.capturedAt === undefined || (includeResize && !it.localResizedDataUrl);
+    const needsWork = (it: UploadItem) => !it.rawBuffer || (includeResize && !it.localResizedDataUrl);
     // 배치 전체를 한 번 도는 것으로 끝내지 않고, 실패한 사진들만 모아서 잠깐 쉬었다가 한 번
     // 더(최대 3라운드) 재시도한다 — 실기기에서 1라운드만으로는 배치 안에서 일부만 성공하고
     // 나머지는 실패하는 걸 확인했는데, 같은 실패가 매 라운드 계속 남는 게 아니라 라운드마다
@@ -211,24 +223,26 @@ export const GithubPhotoUploader: React.FC = () => {
         const doneCount = total - working.filter(needsWork).length;
         setAiStatus(`사진 정보 불러오는 중... (${doneCount + 1}/${total}) ${it.file.name}`);
         const patch: Partial<UploadItem> = {};
-        if (it.capturedAt === undefined) {
-          try {
+        try {
+          // 원본 File은 여기서 딱 한 번만 읽는다 — 이미 rawBuffer가 있으면 재사용.
+          let buf = it.rawBuffer;
+          if (!buf) {
             // eslint-disable-next-line no-await-in-loop
-            const ts = await getPhotoTimestamp(it.file);
+            buf = await it.file.arrayBuffer();
+            patch.rawBuffer = buf;
+          }
+          if (it.capturedAt === undefined) {
+            const ts = getPhotoTimestampFromBuffer(buf, it.file.lastModified);
             patch.capturedAt = ts ? ts.date.toISOString() : null;
             patch.capturedAtSource = ts?.source;
-          } catch {
-            // 실패 — capturedAt을 undefined로 남겨서 다음 라운드에 다시 시도
           }
-        }
-        if (includeResize && !it.localResizedDataUrl) {
-          try {
+          if (includeResize && !it.localResizedDataUrl) {
             // eslint-disable-next-line no-await-in-loop
-            patch.localResizedDataUrl = await resizeImageForCaption(it.file);
-          } catch {
-            // 이번 라운드에서도 실패 — 다음 라운드에서 다시 시도되고, 마지막 라운드까지 실패하면
-            // 이후 실제 캡션 생성 단계에서 같은 실패가 다시 일어나며 에러 메시지가 채워진다.
+            patch.localResizedDataUrl = await resizeBufferForCaption(buf, it.file.type);
           }
+        } catch {
+          // 이번 라운드에서도 실패 — 다음 라운드에서 다시 시도되고, 마지막 라운드까지 실패하면
+          // 이후 실제 캡션 생성 단계에서 같은 실패가 다시 일어나며 에러 메시지가 채워진다.
         }
         if (Object.keys(patch).length > 0) {
           working = working.map((w) => (w.id === it.id ? { ...w, ...patch } : w));
