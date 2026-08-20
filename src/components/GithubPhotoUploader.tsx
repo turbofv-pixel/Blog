@@ -3,6 +3,7 @@ import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste, Sparkles } f
 import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
 import { ANTHROPIC_API_KEY_STORAGE_KEY, generatePhotoCaption } from '../lib/anthropicCaption';
 import { resizeImageForCaption, classifyResizedImage } from '../lib/localCaption';
+import { getPhotoTimestamp, formatPhotoTimestamp } from '../lib/photoMeta';
 
 type CaptionMode = 'local' | 'anthropic';
 
@@ -28,6 +29,11 @@ interface UploadItem {
   // 원본 File을 두 번째로 읽으려 하면(예: "다시 생성" 버튼) 파일 바이트 자체를 못 읽는 경우가
   // 확인돼서, 원본은 최초 1회만 읽고 그 다음부턴 이 캐시를 재사용한다.
   localResizedDataUrl?: string;
+  // 사진이 실제로 찍힌 시각(EXIF, 없으면 파일 수정 시각으로 대체) — ISO 문자열로 저장해서
+  // captions.md에 같이 올리고, 정렬 기준으로도 쓴다. undefined = 아직 추출 시도 전,
+  // null = 시도했지만 못 찾음(재시도 안 함).
+  capturedAt?: string | null;
+  capturedAtSource?: 'exif' | 'file-modified';
 }
 
 const uid = () => Math.random().toString(36).slice(2) + Date.now().toString(36);
@@ -181,33 +187,51 @@ export const GithubPhotoUploader: React.FC = () => {
   // 다른 사진들을 먼저 처리하는 동안) 원본 File을 읽으려 하면 실패하는 게 반복 확인됐다 —
   // 지연 재시도를 넣어도 마찬가지였다. 즉 원본 파일 접근 자체가 선택 직후 짧은 시간만
   // 유효한 것으로 보인다. 그래서 느린 AI 모델 로딩/분류를 시작하기 전에, 선택 직후 최대한
-  // 빨리 모든 사진을 순서대로 미리 읽어서 축소본(data URL)만 캐싱해두고, 실제 분류는 그
-  // 캐시만 사용하게 한다 — 그러면 분류가 얼마나 오래 걸리든 원본 파일 접근 타이밍과 무관해진다.
-  const preloadLocalImages = async (targetItems: UploadItem[]): Promise<UploadItem[]> => {
+  // 빨리 모든 사진을 순서대로 미리 읽어서 (1) 촬영 시각과 (2) 로컬 모드면 축소본(data URL)까지
+  // 한 파일당 한 번의 접근 안에서 같이 뽑아 캐싱해두고, 실제 분류/업로드는 그 캐시만
+  // 사용하게 한다 — 그러면 얼마나 오래 걸리든 원본 파일 접근 타이밍과 무관해진다. 촬영 시각은
+  // 캡션 모드와 무관하게 항상 뽑는다(사진 시간대별로 글을 쓸 수 있게 하기 위한 메타정보).
+  const preloadFileMetadata = async (targetItems: UploadItem[], includeResize: boolean): Promise<UploadItem[]> => {
     let working = targetItems.map((it) => ({ ...it }));
     const total = working.length;
+    const needsWork = (it: UploadItem) => it.capturedAt === undefined || (includeResize && !it.localResizedDataUrl);
     // 배치 전체를 한 번 도는 것으로 끝내지 않고, 실패한 사진들만 모아서 잠깐 쉬었다가 한 번
     // 더(최대 3라운드) 재시도한다 — 실기기에서 1라운드만으로는 배치 안에서 일부만 성공하고
     // 나머지는 실패하는 걸 확인했는데, 같은 실패가 매 라운드 계속 남는 게 아니라 라운드마다
     // 성공률이 오르는 패턴이라(일시적 자원 경합으로 추정), 라운드를 더 주는 게 도움이 된다.
     for (let round = 0; round < 3; round++) {
-      const pending = working.filter((it) => !it.localResizedDataUrl);
+      const pending = working.filter(needsWork);
       if (pending.length === 0) break;
       if (round > 0) {
-        setAiStatus(`일부 사진 다시 불러오는 중... (${pending.length}장 남음)`);
+        setAiStatus(`일부 사진 정보 다시 불러오는 중... (${pending.length}장 남음)`);
         // eslint-disable-next-line no-await-in-loop
         await new Promise((resolve) => setTimeout(resolve, 800));
       }
       for (const it of pending) {
-        const doneCount = total - working.filter((w) => !w.localResizedDataUrl).length;
-        setAiStatus(`사진 불러오는 중... (${doneCount + 1}/${total}) ${it.file.name}`);
-        try {
-          // eslint-disable-next-line no-await-in-loop
-          const dataUrl = await resizeImageForCaption(it.file);
-          working = working.map((w) => (w.id === it.id ? { ...w, localResizedDataUrl: dataUrl } : w));
-        } catch {
-          // 이번 라운드에서도 실패 — 다음 라운드에서 다시 시도되고, 마지막 라운드까지 실패하면
-          // 이후 실제 캡션 생성 단계에서 같은 실패가 다시 일어나며 에러 메시지가 채워진다.
+        const doneCount = total - working.filter(needsWork).length;
+        setAiStatus(`사진 정보 불러오는 중... (${doneCount + 1}/${total}) ${it.file.name}`);
+        const patch: Partial<UploadItem> = {};
+        if (it.capturedAt === undefined) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            const ts = await getPhotoTimestamp(it.file);
+            patch.capturedAt = ts ? ts.date.toISOString() : null;
+            patch.capturedAtSource = ts?.source;
+          } catch {
+            // 실패 — capturedAt을 undefined로 남겨서 다음 라운드에 다시 시도
+          }
+        }
+        if (includeResize && !it.localResizedDataUrl) {
+          try {
+            // eslint-disable-next-line no-await-in-loop
+            patch.localResizedDataUrl = await resizeImageForCaption(it.file);
+          } catch {
+            // 이번 라운드에서도 실패 — 다음 라운드에서 다시 시도되고, 마지막 라운드까지 실패하면
+            // 이후 실제 캡션 생성 단계에서 같은 실패가 다시 일어나며 에러 메시지가 채워진다.
+          }
+        }
+        if (Object.keys(patch).length > 0) {
+          working = working.map((w) => (w.id === it.id ? { ...w, ...patch } : w));
         }
       }
     }
@@ -215,18 +239,14 @@ export const GithubPhotoUploader: React.FC = () => {
   };
 
   // 캡션 생성을 시작하는 단일 진입점 — 자동 트리거(파일 선택 직후)와 수동 "전체 사진 AI로
-  // 설명 생성" 버튼 둘 다 이걸 거치게 해서, 로컬 모드면 항상 preloadLocalImages부터 먼저
-  // 돌게 한다(둘 중 하나만 프리로드를 거치면, 다른 경로로 시작했을 때 캐시 없이 바로
-  // 원본 File을 늦게 읽으려다 다시 같은 문제가 재현된다).
+  // 설명 생성" 버튼 둘 다 이걸 거치게 해서, 촬영 시각(+로컬 모드면 축소본)을 항상 먼저
+  // preloadFileMetadata로 캐싱해둔 뒤에 실제 캡션 생성으로 넘어가게 한다(어느 경로로
+  // 시작하든 캐시 없이 원본 File을 늦게 읽으려다 다시 같은 문제가 재현되는 걸 막는다).
   const startGeneratingCaptions = (targetItems: UploadItem[]) => {
-    if (captionMode === 'local') {
-      preloadLocalImages(targetItems).then((preloaded) => {
-        setItems((prev) => prev.map((p) => preloaded.find((u) => u.id === p.id) || p));
-        handleGenerateAllCaptions(preloaded);
-      });
-    } else {
-      handleGenerateAllCaptions(targetItems);
-    }
+    preloadFileMetadata(targetItems, captionMode === 'local').then((preloaded) => {
+      setItems((prev) => prev.map((p) => preloaded.find((u) => u.id === p.id) || p));
+      handleGenerateAllCaptions(preloaded);
+    });
   };
 
   const handleFilesChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -238,11 +258,18 @@ export const GithubPhotoUploader: React.FC = () => {
     setStatus(null);
     setAiStatus(null);
     e.target.value = '';
-    // 로컬 모드는 키가 필요 없으니 사진 선택 즉시 자동 분석 시작. Anthropic 모드는 키가
-    // 저장돼 있을 때만 자동 시작.
-    if (captionMode === 'local' || anthropicKey.trim()) {
-      startGeneratingCaptions(newItems);
-    }
+    // 촬영 시각은 AI 캡션 모드/키 여부와 완전히 무관하게 사진을 선택하는 즉시 항상 뽑는다
+    // (사진 시간대별로 글을 쓸 수 있게 하기 위한 메타정보). AI 캡션 자동 생성은 로컬 모드는
+    // 키가 필요 없으니 항상, Anthropic 모드는 키가 저장돼 있을 때만 이어서 시작 — 어느 쪽이든
+    // 같은 파일 접근 한 번 안에서 촬영 시각(+필요하면 축소본까지) 같이 뽑아서 원본 File을
+    // 다시 읽는 일이 없게 한다.
+    const willAutoGenerate = captionMode === 'local' || Boolean(anthropicKey.trim());
+    preloadFileMetadata(newItems, willAutoGenerate && captionMode === 'local').then((preloaded) => {
+      setItems(preloaded);
+      if (willAutoGenerate) {
+        handleGenerateAllCaptions(preloaded);
+      }
+    });
   };
 
   const handleCaptionChange = (id: string, caption: string) => {
@@ -296,16 +323,30 @@ export const GithubPhotoUploader: React.FC = () => {
     localStorage.removeItem(GITHUB_TOKEN_KEY);
   };
 
-  const buildCaptionsText = () =>
-    items
+  // 촬영 시각이 있는 사진은 그 시각순으로 정렬해서 올린다 — Claude가 파일 순서만 봐도 그날의
+  // 시간 흐름(오전에 뭘 했고, 오후에 뭘 했는지)대로 글을 쓸 수 있게 하기 위함. 촬영 시각을
+  // 못 찾은 사진은 뒤로 보낸다.
+  const buildCaptionsText = () => {
+    const sorted = [...items].sort((a, b) => {
+      if (!a.capturedAt && !b.capturedAt) return 0;
+      if (!a.capturedAt) return 1;
+      if (!b.capturedAt) return -1;
+      return a.capturedAt.localeCompare(b.capturedAt);
+    });
+    return sorted
       .map((it, i) => {
         const lines = [`${i + 1}. ${it.file.name}`];
+        if (it.capturedAt) {
+          const label = it.capturedAtSource === 'exif' ? '촬영 시각' : '촬영 시각(추정 — 사진 파일의 수정 시각 기준)';
+          lines.push(`   ${label}: ${formatPhotoTimestamp(new Date(it.capturedAt))}`);
+        }
         if (it.caption.trim()) lines.push(`   AI 태그: ${it.caption.trim()}`);
         if (it.userNote.trim()) lines.push(`   직접 메모: ${it.userNote.trim()}`);
         if (!it.caption.trim() && !it.userNote.trim()) lines.push('   (설명 없음)');
         return lines.join('\n');
       })
       .join('\n\n');
+  };
 
   const handleUpload = async () => {
     const tok = token.trim();
@@ -547,6 +588,13 @@ export const GithubPhotoUploader: React.FC = () => {
                 <div style={{ flex: 1, minWidth: 0 }}>
                   <div style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginBottom: '4px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
                     {it.file.name}
+                    {it.capturedAt && (
+                      <span style={{ marginLeft: '6px', color: it.capturedAtSource === 'exif' ? '#03C75A' : '#94a3b8' }}>
+                        · {formatPhotoTimestamp(new Date(it.capturedAt))}
+                        {it.capturedAtSource !== 'exif' && ' (추정)'}
+                      </span>
+                    )}
+                    {it.capturedAt === undefined && <span style={{ marginLeft: '6px', color: 'var(--text-muted)' }}>· 시각 확인 중...</span>}
                   </div>
                   <div style={{ fontSize: '0.68rem', color: '#a78bfa', marginBottom: '3px' }}>AI 태그</div>
                   <div style={{ display: 'flex', gap: '6px', marginBottom: '8px' }}>
