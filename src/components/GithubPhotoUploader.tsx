@@ -193,61 +193,63 @@ export const GithubPhotoUploader: React.FC = () => {
     );
   };
 
-  // 실기기(안드로이드)에서, 사진을 여러 장 선택한 뒤 시간이 좀 지나서(모델 로딩을 기다리거나,
-  // 다른 사진들을 먼저 처리하는 동안) 원본 File을 읽으려 하면 실패하는 게 반복 확인됐다 —
-  // 지연 재시도를 넣어도 마찬가지였다. 즉 원본 파일 접근 자체가 선택 직후 짧은 시간만
-  // 유효한 것으로 보인다 — 더 결정적으로는, 같은 File을 서로 다른 API로 "두 번째" 건드리는
-  // 순간(예: EXIF 읽기 뒤에 이미지 디코딩) 그 두 번째 접근이 실패하는 게 확인됐다(구글
-  // 포토에서 받은 사진 등, 실기기 재현). 그래서 원본 File은 아이템당 딱 한 번만
-  // file.arrayBuffer()로 통째로 읽어 rawBuffer에 캐싱해두고, 촬영 시각 추출과 (필요하면)
-  // 이미지 리사이즈 둘 다 그 같은 버퍼에서 처리한다 — 원본 File을 두 번째로 여는 일 자체가
-  // 없게 만드는 게 핵심이다. 촬영 시각은 캡션 모드와 무관하게 항상 뽑는다(사진 시간대별로
-  // 글을 쓸 수 있게 하기 위한 메타정보).
+  // 실기기(안드로이드)에서 정확한 브라우저 에러를 확인했다: "The requested file could not be
+  // read, typically due to permission problems that have occurred after a reference to a
+  // file was acquired." — 안드로이드 사진 선택기가 넘겨준 파일 접근 권한이 일정 시간 뒤
+  // 만료된다는 뜻이다. 사진을 하나씩 순서대로(그 사이 EXIF 파싱/이미지 리사이즈 같은 계산도
+  // 끼워서) 읽으면, 배치 뒤쪽 사진일수록 그 시간 제한에 걸릴 위험이 커진다 — 실제로 7장 중
+  // 마지막 사진에서 실패가 재현됐다. 그래서 원본 File 바이트 읽기(file.arrayBuffer())만
+  // 시간에 민감한 작업으로 분리해서, 선택 즉시 배치 전체를 동시에(Promise.all) 읽어 전체
+  // 소요 시간을 최소화한다. 그 이후(EXIF 파싱, 이미지 리사이즈)는 이미 메모리에 있는 버퍼로만
+  // 처리하는 순수 계산이라 파일 접근 시간 제한과 완전히 무관해진다. 촬영 시각은 캡션 모드와
+  // 무관하게 항상 뽑는다(사진 시간대별로 글을 쓸 수 있게 하기 위한 메타정보).
   const preloadFileMetadata = async (targetItems: UploadItem[], includeResize: boolean): Promise<UploadItem[]> => {
     let working = targetItems.map((it) => ({ ...it }));
     const total = working.length;
-    const needsWork = (it: UploadItem) => !it.rawBuffer || (includeResize && !it.localResizedDataUrl);
-    // 배치 전체를 한 번 도는 것으로 끝내지 않고, 실패한 사진들만 모아서 잠깐 쉬었다가 한 번
-    // 더(최대 3라운드) 재시도한다 — 실기기에서 1라운드만으로는 배치 안에서 일부만 성공하고
-    // 나머지는 실패하는 걸 확인했는데, 같은 실패가 매 라운드 계속 남는 게 아니라 라운드마다
-    // 성공률이 오르는 패턴이라(일시적 자원 경합으로 추정), 라운드를 더 주는 게 도움이 된다.
+
+    // 1단계: 원본 File 바이트를 배치 전체 동시에 읽는다. 실패한 것만 모아 잠깐 쉬었다가
+    // 다시 동시에 재시도(최대 3라운드) — 권한이 일시적으로 회복될 수도 있어서.
     for (let round = 0; round < 3; round++) {
-      const pending = working.filter(needsWork);
+      const pending = working.filter((it) => !it.rawBuffer);
       if (pending.length === 0) break;
       if (round > 0) {
-        setAiStatus(`일부 사진 정보 다시 불러오는 중... (${pending.length}장 남음)`);
+        setAiStatus(`일부 사진을 다시 불러오는 중... (${pending.length}장 남음)`);
         // eslint-disable-next-line no-await-in-loop
         await new Promise((resolve) => setTimeout(resolve, 800));
+      } else {
+        setAiStatus(`사진 ${total}장 불러오는 중...`);
       }
-      for (const it of pending) {
-        const doneCount = total - working.filter(needsWork).length;
-        setAiStatus(`사진 정보 불러오는 중... (${doneCount + 1}/${total}) ${it.file.name}`);
-        const patch: Partial<UploadItem> = {};
+      // eslint-disable-next-line no-await-in-loop
+      const results = await Promise.allSettled(pending.map((it) => it.file.arrayBuffer()));
+      working = working.map((it) => {
+        const idx = pending.findIndex((p) => p.id === it.id);
+        if (idx === -1) return it;
+        const r = results[idx];
+        return r.status === 'fulfilled' ? { ...it, rawBuffer: r.value } : it;
+      });
+    }
+
+    // 2단계: 여기부터는 원본 File을 더 이상 건드리지 않는다 — 캐싱된 버퍼에서 촬영 시각을
+    // 뽑고, 필요하면 이미지도 리사이즈한다(순수 계산이라 순서대로 처리해도 시간 제한과 무관).
+    for (const it of working) {
+      if (!it.rawBuffer) continue; // 1단계에서 끝내 못 읽음 — 캡션 생성 단계에서 에러로 표시됨
+      if (it.capturedAt !== undefined && (!includeResize || it.localResizedDataUrl)) continue;
+      setAiStatus(`사진 정보 처리 중... ${it.file.name}`);
+      const patch: Partial<UploadItem> = {};
+      if (it.capturedAt === undefined) {
+        const ts = getPhotoTimestampFromBuffer(it.rawBuffer, it.file.lastModified);
+        patch.capturedAt = ts ? ts.date.toISOString() : null;
+        patch.capturedAtSource = ts?.source;
+      }
+      if (includeResize && !it.localResizedDataUrl) {
         try {
-          // 원본 File은 여기서 딱 한 번만 읽는다 — 이미 rawBuffer가 있으면 재사용.
-          let buf = it.rawBuffer;
-          if (!buf) {
-            // eslint-disable-next-line no-await-in-loop
-            buf = await it.file.arrayBuffer();
-            patch.rawBuffer = buf;
-          }
-          if (it.capturedAt === undefined) {
-            const ts = getPhotoTimestampFromBuffer(buf, it.file.lastModified);
-            patch.capturedAt = ts ? ts.date.toISOString() : null;
-            patch.capturedAtSource = ts?.source;
-          }
-          if (includeResize && !it.localResizedDataUrl) {
-            // eslint-disable-next-line no-await-in-loop
-            patch.localResizedDataUrl = await resizeBufferForCaption(buf, it.file.type);
-          }
+          // eslint-disable-next-line no-await-in-loop
+          patch.localResizedDataUrl = await resizeBufferForCaption(it.rawBuffer, it.file.type);
         } catch {
-          // 이번 라운드에서도 실패 — 다음 라운드에서 다시 시도되고, 마지막 라운드까지 실패하면
-          // 이후 실제 캡션 생성 단계에서 같은 실패가 다시 일어나며 에러 메시지가 채워진다.
-        }
-        if (Object.keys(patch).length > 0) {
-          working = working.map((w) => (w.id === it.id ? { ...w, ...patch } : w));
+          // 순수 디코딩 실패(형식 문제 등) — 이후 캡션 생성 단계에서 에러로 남는다
         }
       }
+      working = working.map((w) => (w.id === it.id ? { ...w, ...patch } : w));
     }
     return working;
   };
