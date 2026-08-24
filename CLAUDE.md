@@ -26,9 +26,10 @@ unless asked.
 
 Every 육아-category post's title (both the `.md` frontmatter `title` and the matching
 `src/App.tsx` entry) starts with the literal prefix `[아이와 가볼 만한 곳] ` before the rest of
-the title, e.g. `[아이와 가볼 만한 곳] 오산 유엔군초전기념관 전시관·체험관 아이와 가볼만한곳 후기
-(무료 VR·역사체험)`. Applies to new posts going forward; existing posts don't need to be
-retrofitted unless asked.
+the title, e.g. `[아이와 가볼 만한 곳] 용인시기후변화체험교육센터 후기 (무료 체험관·기후탐험대)`.
+The prefix already says "아이와 가볼만한곳", so don't repeat that phrase again later in the same
+title (e.g. not `... 아이와 가볼만한곳 후기 ...` — just `... 후기 ...`). Applies to new posts
+going forward; existing posts don't need to be retrofitted unless asked.
 
 ## Parenting post media: the user processes it themselves now, via MosaicStudio
 
