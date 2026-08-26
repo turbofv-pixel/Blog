@@ -11,7 +11,7 @@ const samplePosts: Post[] = [
     id: 'post-37',
     title: 'GS건설 분석 - 반등의 진짜 이유는 모듈러 아닌 재무·원전',
     category: '주식',
-    date: '2026-08-26',
+    date: '2026-08-27',
     tags: ['주식', 'GS건설', '건설주', 'SMR', '원전', '모듈러주택', '종목분석', '코스피'],
     naverCategory: '국내주식',
     filePath: 'posts/stock/gsenc-analysis.md',
