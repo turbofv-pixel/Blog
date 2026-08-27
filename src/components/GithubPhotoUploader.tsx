@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { Upload, Github, Eye, EyeOff, X, RefreshCw, ClipboardPaste, Sparkles, Rabbit } from 'lucide-react';
-import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
+import { GITHUB_BRANCH_KEY, GITHUB_TOKEN_KEY, fileToBase64, githubGetFileContent, githubPutFile, utf8ToBase64 } from '../lib/githubUpload';
 import { ANTHROPIC_API_KEY_STORAGE_KEY, generatePhotoCaptionFromBuffer } from '../lib/anthropicCaption';
 import { resizeBufferForCaption, classifyResizedImage } from '../lib/localCaption';
 import { getPhotoTimestampFromBuffer, formatPhotoTimestamp } from '../lib/photoMeta';
@@ -348,29 +348,59 @@ export const GithubPhotoUploader: React.FC<GithubPhotoUploaderProps> = ({ onCont
     localStorage.removeItem(GITHUB_TOKEN_KEY);
   };
 
-  // 촬영 시각이 있는 사진은 그 시각순으로 정렬해서 올린다 — Claude가 파일 순서만 봐도 그날의
-  // 시간 흐름(오전에 뭘 했고, 오후에 뭘 했는지)대로 글을 쓸 수 있게 하기 위함. 촬영 시각을
-  // 못 찾은 사진은 뒤로 보낸다.
-  const buildCaptionsText = () => {
-    const sorted = [...items].sort((a, b) => {
-      if (!a.capturedAt && !b.capturedAt) return 0;
-      if (!a.capturedAt) return 1;
-      if (!b.capturedAt) return -1;
-      return a.capturedAt.localeCompare(b.capturedAt);
+  // 한 항목의 "N. 파일명" 다음 줄들(촬영 시각/AI 태그/직접 메모)만 만든다 — 번호는 최종
+  // 병합·정렬 후에 매기므로 여기서는 붙이지 않는다.
+  const buildItemEntryBody = (it: UploadItem): string => {
+    const lines: string[] = [];
+    if (it.capturedAt) {
+      const label = it.capturedAtSource === 'exif' ? '촬영 시각' : '촬영 시각(추정 — 사진 파일의 수정 시각 기준)';
+      lines.push(`   ${label}: ${formatPhotoTimestamp(new Date(it.capturedAt))}`);
+    }
+    if (it.caption.trim()) lines.push(`   AI 태그: ${it.caption.trim()}`);
+    if (it.userNote.trim()) lines.push(`   직접 메모: ${it.userNote.trim()}`);
+    if (!it.caption.trim() && !it.userNote.trim()) lines.push('   (설명 없음)');
+    return lines.join('\n');
+  };
+
+  // 기존 captions.md 텍스트를 다시 항목 단위로 쪼갠다. githubPutFile은 PUT이라 항상 파일
+  // 전체를 갈아치우는데, 그걸 모르고 같은 폴더에 두 번째 배치를 올리면 첫 배치의 메모가
+  // 통째로 사라지는 게 실제로 있었던 사고다(2026-06-20 gcmeta 폴더 — 2월 방문 사진 4장의
+  // 메모가 6월 방문 사진 1장으로 덮어써짐, git 히스토리로만 복구). 그래서 업로드 전에 항상
+  // 기존 파일을 먼저 읽어서 이 함수로 파싱한 뒤, 새 항목과 합쳐서(mergeCaptionsEntries)
+  // 다시 써야 한다.
+  const parseCaptionsEntries = (text: string): { filename: string; body: string; timeKey: string | null }[] =>
+    text
+      .split(/\n\s*\n/)
+      .map((block) => block.trim())
+      .filter(Boolean)
+      .map((block) => {
+        const lines = block.split('\n');
+        const m = (lines[0] || '').match(/^\d+\.\s*(\S.*)$/);
+        const filename = m ? m[1].trim() : (lines[0] || '').trim();
+        const body = lines.slice(1).join('\n');
+        const timeMatch = body.match(/촬영 시각[^:]*:\s*(\d{4}-\d{2}-\d{2} \d{2}:\d{2})/);
+        return { filename, body, timeKey: timeMatch ? timeMatch[1].replace(' ', 'T') : null };
+      });
+
+  // 기존 항목(같은 파일명이 이번 배치에 없는 것만 유지 — 있으면 새 내용으로 교체) + 이번에
+  // 새로 올리는 항목을 촬영 시각순으로 합쳐서 번호를 다시 매긴다. 촬영 시각이 없는 항목은
+  // 맨 뒤로 보낸다.
+  const mergeCaptionsEntries = (existingText: string | null, newItems: UploadItem[]): string => {
+    const existing = existingText ? parseCaptionsEntries(existingText) : [];
+    const newFilenames = new Set(newItems.map((it) => it.file.name));
+    const kept = existing.filter((e) => !newFilenames.has(e.filename));
+    const fresh = newItems.map((it) => ({
+      filename: it.file.name,
+      body: buildItemEntryBody(it),
+      timeKey: it.capturedAt ? it.capturedAt.slice(0, 16) : null,
+    }));
+    const all = [...kept, ...fresh].sort((a, b) => {
+      if (!a.timeKey && !b.timeKey) return 0;
+      if (!a.timeKey) return 1;
+      if (!b.timeKey) return -1;
+      return a.timeKey.localeCompare(b.timeKey);
     });
-    return sorted
-      .map((it, i) => {
-        const lines = [`${i + 1}. ${it.file.name}`];
-        if (it.capturedAt) {
-          const label = it.capturedAtSource === 'exif' ? '촬영 시각' : '촬영 시각(추정 — 사진 파일의 수정 시각 기준)';
-          lines.push(`   ${label}: ${formatPhotoTimestamp(new Date(it.capturedAt))}`);
-        }
-        if (it.caption.trim()) lines.push(`   AI 태그: ${it.caption.trim()}`);
-        if (it.userNote.trim()) lines.push(`   직접 메모: ${it.userNote.trim()}`);
-        if (!it.caption.trim() && !it.userNote.trim()) lines.push('   (설명 없음)');
-        return lines.join('\n');
-      })
-      .join('\n\n');
+    return all.map((e, i) => `${i + 1}. ${e.filename}\n${e.body}`).join('\n\n');
   };
 
   const handleUpload = async () => {
@@ -418,7 +448,12 @@ export const GithubPhotoUploader: React.FC<GithubPhotoUploaderProps> = ({ onCont
 
     setStatus('업로드 중... 설명 메모(captions.md)');
     try {
-      await githubPutFile(`public/images/${folderPath}/captions.md`, utf8ToBase64(buildCaptionsText()), '사진 설명 메모 추가', tok, branch);
+      // 덮어쓰기 사고 방지: 올리기 전에 기존 captions.md가 있으면 먼저 읽어서 이번 배치와
+      // 병합한다. 없으면(첫 업로드) null이 오고, 그대로 새 항목만으로 시작한다.
+      const captionsPath = `public/images/${folderPath}/captions.md`;
+      const existingContent = await githubGetFileContent(captionsPath, tok, branch);
+      const mergedText = mergeCaptionsEntries(existingContent, items);
+      await githubPutFile(captionsPath, utf8ToBase64(mergedText), '사진 설명 메모 추가', tok, branch);
     } catch (err: any) {
       setUploading(false);
       setStatus(
@@ -455,7 +490,7 @@ export const GithubPhotoUploader: React.FC<GithubPhotoUploaderProps> = ({ onCont
             올려요. 얼굴 인식이나 모자이크 처리는 여기서 하지 않아요. <strong>기본은 사진은 안 올리고 설명 메모만
             커밋</strong>돼요 — 얼굴이 그대로 보이는 원본을 캡션만 붙이는 용도로 올려도 저장소에는 사진이 절대
             올라가지 않아요. 모자이크 처리를 끝낸 뒤 "사진도 같이 올리기"를 켜고 다시 올리면 그때 실제 파일이
-            커밋돼요.
+            커밋돼요. 같은 폴더에 나중에 또 올려도 이전에 올린 메모는 지워지지 않고 촬영 시각순으로 이어 붙어요.
           </p>
         </div>
       </div>
