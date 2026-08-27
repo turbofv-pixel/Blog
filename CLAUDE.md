@@ -141,3 +141,14 @@ undefined; } } })` right after importing `marked`, which disables the rule entir
 never intentionally use strikethrough). Don't remove that — and don't "fix" future
 strikethrough sightings by escaping `~` in post content; fix the tokenizer config instead if
 it's ever reverted.
+
+## Markdown gotcha: `**bold**` right before a Korean particle with no space silently fails
+
+`marked`'s emphasis parser can fail to close `**bold**` when the closing `**` is immediately
+preceded by `)` and immediately followed by a Korean character with no space, e.g.
+`**메타포레스트(메타버스 체험관)**에` renders as literal asterisks instead of `<strong>`.
+`**메타포레스트**(메타버스 체험관)에` (move the parenthetical outside the bold) or adding a
+space before the particle both render fine. The stray-`**`-in-rendered-HTML regression check
+already run before every post commit (render through `marked.parse()`, grep for leftover
+`**`) catches this — if it fires, reword the sentence rather than assuming the check is
+wrong.
