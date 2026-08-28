@@ -22,6 +22,15 @@ the `# ` H1 with a greeting line like "안녕하세요 대왕토끼입니다~ �
 content. Applies to new posts going forward; existing posts don't need to be retrofitted
 unless asked.
 
+## Parenting (육아) post titles start with "[아이와 가볼 만한 곳]"
+
+Every 육아-category post's title (both the `.md` frontmatter `title` and the matching
+`src/App.tsx` entry) starts with the literal prefix `[아이와 가볼 만한 곳] ` before the rest of
+the title, e.g. `[아이와 가볼 만한 곳] 용인시기후변화체험교육센터 후기 (무료 체험관·기후탐험대)`.
+The prefix already says "아이와 가볼만한곳", so don't repeat that phrase again later in the same
+title (e.g. not `... 아이와 가볼만한곳 후기 ...` — just `... 후기 ...`). Applies to new posts
+going forward; existing posts don't need to be retrofitted unless asked.
+
 ## Parenting post media: the user processes it themselves now, via MosaicStudio
 
 Earlier posts had Claude do face-detection + bunny-sticker processing directly (Python
@@ -132,3 +141,14 @@ undefined; } } })` right after importing `marked`, which disables the rule entir
 never intentionally use strikethrough). Don't remove that — and don't "fix" future
 strikethrough sightings by escaping `~` in post content; fix the tokenizer config instead if
 it's ever reverted.
+
+## Markdown gotcha: `**bold**` right before a Korean particle with no space silently fails
+
+`marked`'s emphasis parser can fail to close `**bold**` when the closing `**` is immediately
+preceded by `)` and immediately followed by a Korean character with no space, e.g.
+`**메타포레스트(메타버스 체험관)**에` renders as literal asterisks instead of `<strong>`.
+`**메타포레스트**(메타버스 체험관)에` (move the parenthetical outside the bold) or adding a
+space before the particle both render fine. The stray-`**`-in-rendered-HTML regression check
+already run before every post commit (render through `marked.parse()`, grep for leftover
+`**`) catches this — if it fires, reword the sentence rather than assuming the check is
+wrong.

@@ -32,6 +32,30 @@ export function fileToBase64(file: File): Promise<string> {
   });
 }
 
+// 기존 파일의 디코딩된 텍스트 내용을 가져온다. 파일이 없거나(404) 요청 자체가 실패하면
+// null을 돌려준다 — 호출하는 쪽(예: captions.md에 새 항목을 이어 붙이려는 쪽)은 null을
+// "아직 파일이 없으니 새로 시작"으로 해석하면 된다.
+export async function githubGetFileContent(path: string, token: string, branch: string): Promise<string | null> {
+  const url = `https://api.github.com/repos/${GITHUB_OWNER}/${GITHUB_REPO}/contents/${path
+    .split('/')
+    .map(encodeURIComponent)
+    .join('/')}`;
+  try {
+    const res = await fetch(`${url}?ref=${encodeURIComponent(branch)}`, {
+      headers: { Authorization: `Bearer ${token}`, Accept: 'application/vnd.github+json' },
+    });
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (typeof data.content !== 'string') return null;
+    // GitHub returns base64 with embedded newlines - strip them, then reverse utf8ToBase64's
+    // escape/encodeURIComponent trick to get back the original UTF-8 text (한글 등 포함).
+    const base64 = data.content.replace(/\n/g, '');
+    return decodeURIComponent(escape(atob(base64)));
+  } catch {
+    return null;
+  }
+}
+
 export async function githubPutFile(
   path: string,
   contentBase64: string,
