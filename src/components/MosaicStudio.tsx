@@ -591,10 +591,15 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
     const time = video.currentTime;
     const activeMarkers = getActiveKeyframeMarkers(item.keyframes, time);
 
+    // 삭제 판정 반경은 원 전체가 아니라 중심 쪽 절반(면적으로는 1/4)만 쓴다 — 원래는 원
+    // 어디를 눌러도 그 원이 지워져서, 여러 개를 겹치듯 촘촘히 놓으려 하면 방금 놓은 옆
+    // 토끼를 누를 때마다 기존 토끼가 지워지는 문제가 있었다. 중심 근처를 정확히 눌러야만
+    // 지워지게 하면, 원끼리 겹쳐도 각자의 중심 바깥쪽을 눌러서 새 토끼를 추가할 여유가 생긴다.
+    const HIT_RADIUS_FACTOR = 0.5;
     const hitIdx = activeMarkers.findIndex((m) => {
       const dxPx = (fx - m.fx) * video.videoWidth;
       const dyPx = (fy - m.fy) * video.videoHeight;
-      const rPx = m.fr * video.videoWidth;
+      const rPx = m.fr * video.videoWidth * HIT_RADIUS_FACTOR;
       return Math.hypot(dxPx, dyPx) <= rPx;
     });
     const newMarkers =
@@ -1176,21 +1181,36 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
                       style={{ position: 'absolute', inset: 0, cursor: 'crosshair' }}
                     >
                       {getActiveKeyframeMarkers(activeVideoItem.keyframes, videoScrubTime).map((m) => (
-                        <div
-                          key={m.id}
-                          style={{
-                            position: 'absolute',
-                            left: `${m.fx * 100}%`,
-                            top: `${m.fy * 100}%`,
-                            width: `${m.fr * 2 * 100}%`,
-                            aspectRatio: '1 / 1',
-                            transform: 'translate(-50%, -50%)',
-                            borderRadius: '50%',
-                            border: '3px solid #03C75A',
-                            background: 'rgba(3,199,90,0.25)',
-                            pointerEvents: 'none',
-                          }}
-                        />
+                        <React.Fragment key={m.id}>
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: `${m.fx * 100}%`,
+                              top: `${m.fy * 100}%`,
+                              width: `${m.fr * 2 * 100}%`,
+                              aspectRatio: '1 / 1',
+                              transform: 'translate(-50%, -50%)',
+                              borderRadius: '50%',
+                              border: '3px solid #03C75A',
+                              background: 'rgba(3,199,90,0.25)',
+                              pointerEvents: 'none',
+                            }}
+                          />
+                          {/* 이 점선 안쪽을 눌러야 삭제된다 — 바깥쪽은 눌러도 새 토끼가 겹쳐서 추가됨 */}
+                          <div
+                            style={{
+                              position: 'absolute',
+                              left: `${m.fx * 100}%`,
+                              top: `${m.fy * 100}%`,
+                              width: `${m.fr * 2 * 100 * 0.5}%`,
+                              aspectRatio: '1 / 1',
+                              transform: 'translate(-50%, -50%)',
+                              borderRadius: '50%',
+                              border: '1.5px dashed rgba(255,255,255,0.85)',
+                              pointerEvents: 'none',
+                            }}
+                          />
+                        </React.Fragment>
                       ))}
                     </div>
                   )}
@@ -1227,17 +1247,18 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
                       padding: '8px 12px',
                     }}
                   >
-                    👆 바로 위 영상을 눌러서 토끼를 배치/제거하세요
+                    👆 바로 위 영상을 눌러서 토끼를 배치하세요
                     {activeVideoItem.keyframes.length === 0 && ' (아직 하나도 안 놓았어요 — 놓기 전에 시작하면 토끼 없이 그대로 나가요!)'}. 놓은 자리는 다음
                     클릭 시점까지 그대로 유지돼요 — 얼굴이 움직이면 그 시점으로 이동해서 다시 눌러 위치를
-                    갱신해주세요.
+                    갱신해주세요. 이미 놓인 토끼는 <strong>한가운데(점선 안쪽)</strong>를 다시 누르면 제거되고, 그
+                    바깥쪽을 누르면 겹치게 새로 추가돼요 — 촘촘히 겹쳐 놓고 싶으면 중심을 살짝씩 비켜서 눌러주세요.
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '320px' }}>
                     <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>크기</span>
                     <input
                       type="range"
                       min={6}
-                      max={40}
+                      max={80}
                       value={videoManualSizePct}
                       onChange={(e) => setVideoManualSizePct(Number(e.target.value))}
                       style={{ flex: 1 }}
