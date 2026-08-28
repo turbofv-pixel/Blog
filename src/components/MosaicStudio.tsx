@@ -632,6 +632,19 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
   // 영상 큐를 순서대로 하나씩 처리한다 (동시에 여러 개를 녹화하면 캔버스/레코더를 공유할 수
   // 없으니 반드시 순차 처리 — 대신 다음 영상으로 자동으로 넘어가서 한 번의 "시작"으로 전부 끝남).
   const processVideoQueue = async () => {
+    // 수동 모드로 켜놓고 영상 위를 한 번도 클릭하지 않은 채(키프레임 0개) 바로 시작을 누르면,
+    // 토끼가 하나도 안 씌워진 영상이 조용히 만들어진다 — 겉으로는 "그냥 원본이 그대로
+    // 나온다"처럼 보여서 자동 인식이 실패한 줄 착각하기 쉽다. 처리 시작 전에 미리 막고
+    // 알려준다.
+    const emptyManualItem = videoItems.find((it) => it.status !== 'done' && it.manualMode && it.keyframes.length === 0);
+    if (emptyManualItem) {
+      setActiveVideoIndex(videoItems.indexOf(emptyManualItem));
+      setStatusMessage(
+        `❌ "${emptyManualItem.file.name}"은 수동 모드인데 아직 토끼를 하나도 배치하지 않았어요 — 위 영상을 클릭해서 먼저 토끼를 놓아주세요.`
+      );
+      return;
+    }
+
     setIsProcessing(true);
     cancelRef.current = false;
 
@@ -1029,6 +1042,29 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
         </div>
       )}
 
+      {/* 처리 중이 아닐 때도 방금 무슨 일이 있었는지(완료/실패/경고) 계속 보여준다 — 이전엔
+          isProcessing이 꺼지는 순간 최종 상태 메시지("✨ 처리 완료" 등)가 화면에서 그대로
+          사라져서, 특히 실패/경고 메시지를 놓치기 쉬웠다. */}
+      {!isProcessing && hasMedia && statusMessage && (statusMessage.startsWith('❌') || statusMessage.startsWith('⚠️') || statusMessage.startsWith('✨')) && (
+        <div
+          style={{
+            display: 'flex',
+            alignItems: 'center',
+            gap: '8px',
+            color: statusMessage.startsWith('❌') ? '#f87171' : statusMessage.startsWith('⚠️') ? '#fbbf24' : '#03C75A',
+            background: statusMessage.startsWith('❌') ? 'rgba(248,113,113,0.08)' : statusMessage.startsWith('⚠️') ? 'rgba(251,191,36,0.08)' : 'rgba(3,199,90,0.08)',
+            border: `1px solid ${statusMessage.startsWith('❌') ? 'rgba(248,113,113,0.25)' : statusMessage.startsWith('⚠️') ? 'rgba(251,191,36,0.25)' : 'rgba(3,199,90,0.25)'}`,
+            borderRadius: '10px',
+            padding: '10px 14px',
+            marginBottom: '16px',
+            fontSize: '0.85rem',
+            fontWeight: 600,
+          }}
+        >
+          {statusMessage}
+        </div>
+      )}
+
       {!hasMedia ? (
         <div
           style={{
@@ -1179,9 +1215,22 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
                       0.5초 ▶
                     </button>
                   </div>
-                  <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', textAlign: 'center' }}>
-                    영상 위를 눌러서 토끼를 배치/제거하세요. 놓은 자리는 다음 클릭 시점까지 그대로 유지돼요 —
-                    얼굴이 움직이면 그 시점으로 이동해서 다시 눌러 위치를 갱신해주세요.
+                  <p
+                    style={{
+                      fontSize: '0.8rem',
+                      color: '#03C75A',
+                      fontWeight: 600,
+                      textAlign: 'center',
+                      background: 'rgba(3,199,90,0.08)',
+                      border: '1px solid rgba(3,199,90,0.25)',
+                      borderRadius: '8px',
+                      padding: '8px 12px',
+                    }}
+                  >
+                    👆 바로 위 영상을 눌러서 토끼를 배치/제거하세요
+                    {activeVideoItem.keyframes.length === 0 && ' (아직 하나도 안 놓았어요 — 놓기 전에 시작하면 토끼 없이 그대로 나가요!)'}. 놓은 자리는 다음
+                    클릭 시점까지 그대로 유지돼요 — 얼굴이 움직이면 그 시점으로 이동해서 다시 눌러 위치를
+                    갱신해주세요.
                   </p>
                   <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '320px' }}>
                     <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>크기</span>
