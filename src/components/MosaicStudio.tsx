@@ -45,6 +45,22 @@ interface ImageItem {
 
 const MAX_UNDO_HISTORY = 20;
 
+// 수동 모드에서 특정 시점(초 단위)에 사용자가 직접 배치한 토끼 마커들. 위치/크기를 영상의
+// 실제 가로/세로 대비 "비율"(0~1)로 저장해서, 화면에 얼마나 작게/크게 표시되든, 또 최종
+// 렌더링 캔버스 해상도가 얼마든 항상 정확한 실제 좌표로 환산할 수 있게 한다. fr(반지름)은
+// 항상 "가로" 기준 비율로 통일해서, x/y 어느 쪽으로 변환하든 진짜 원이 되게 한다.
+interface VideoMarker {
+  id: string;
+  fx: number;
+  fy: number;
+  fr: number;
+}
+
+interface VideoKeyframe {
+  time: number; // 초 단위
+  markers: VideoMarker[];
+}
+
 interface VideoItem {
   id: string;
   file: File;
@@ -54,6 +70,23 @@ interface VideoItem {
   resultUrl: string | null;
   resultExt: string;
   faceRatio: number | null;
+  // 수동 모드: 자동 얼굴 인식 대신, 사용자가 프레임을 직접 확인하면서 토끼를 배치한다.
+  manualMode: boolean;
+  // 시간순으로 정렬된 키프레임 목록. 재생 중 어느 시점이든 "그 시점 이하 중 가장 최근
+  // 키프레임"의 마커를 그대로 유지(보간 없이 고정)하다가 다음 키프레임에서 바뀐다 — 여러
+  // 얼굴이 나타났다 사라졌다 하는 걸 매끄럽게 보간하는 것보다, 사용자가 확인한 그대로
+  // 정확하게 고정되는 쪽이 이 기능의 목적(내가 직접 확인하면서 배치)에 더 맞는다.
+  keyframes: VideoKeyframe[];
+}
+
+// 특정 시점(seconds)에 적용해야 할 마커 목록 — 그 시점 이하로 가장 최근인 키프레임을 찾는다.
+function getActiveKeyframeMarkers(keyframes: VideoKeyframe[], time: number): VideoMarker[] {
+  let active: VideoMarker[] = [];
+  for (const kf of keyframes) {
+    if (kf.time <= time + 0.001) active = kf.markers;
+    else break;
+  }
+  return active;
 }
 
 // GitHub Pages 배포 시 base가 '/Blog/' 이므로, 정적 자산은 항상 BASE_URL을 기준으로 찾는다
@@ -303,6 +336,12 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
   // --- 영상(여러 개 가능, 순서대로 하나씩 처리) 상태 ---
   const [videoItems, setVideoItems] = useState<VideoItem[]>([]);
   const [activeVideoIndex, setActiveVideoIndex] = useState<number>(0);
+  // 수동 배치 모드에서 새로 찍는 마커의 크기(영상 가로 대비 지름 %) — 사진 쪽 manualSizePct와
+  // 같은 개념.
+  const [videoManualSizePct, setVideoManualSizePct] = useState<number>(16);
+  // <video> 엘리먼트는 React state가 아니라서, 재생/탐색 중 현재 시각을 화면(오버레이 마커,
+  // 시간 표시)에 반영하려면 별도로 추적해야 한다.
+  const [videoScrubTime, setVideoScrubTime] = useState<number>(0);
 
   const canvasRef = useRef<HTMLCanvasElement | null>(null);
   const videoElRef = useRef<HTMLVideoElement | null>(null);
@@ -366,6 +405,8 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
       resultUrl: null,
       resultExt: 'webm',
       faceRatio: null,
+      manualMode: false,
+      keyframes: [],
     }));
     setVideoItems(items);
     setActiveVideoIndex(0);
@@ -508,6 +549,72 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
     );
   };
 
+  // 활성 영상의 "수동 배치 모드"를 켜고 끈다. 자동 인식 모드로 돌아가도 이미 찍어둔 키프레임은
+  // 지우지 않는다 — 다시 수동으로 돌아오면 그대로 남아있다.
+  const toggleVideoManualMode = () => {
+    if (!activeVideoItem) return;
+    const id = activeVideoItem.id;
+    setVideoItems((prev) => prev.map((it) => (it.id === id ? { ...it, manualMode: !it.manualMode } : it)));
+  };
+
+  // 영상을 지정한 만큼(초 단위, 음수면 뒤로) 이동한다 — 재생 중이면 멈추고 정확한 프레임을
+  // 확인할 수 있게 한다.
+  const stepVideoTime = (deltaSeconds: number) => {
+    const video = videoElRef.current;
+    if (!video) return;
+    video.pause();
+    const next = Math.max(0, Math.min(video.duration || 0, video.currentTime + deltaSeconds));
+    video.currentTime = next;
+    setVideoScrubTime(next);
+  };
+
+  // 특정 시각의 키프레임을 완전히 삭제한다(그 시점부터는 그 이전 키프레임의 마커로 되돌아감).
+  const handleDeleteKeyframe = (time: number) => {
+    if (!activeVideoItem) return;
+    const id = activeVideoItem.id;
+    setVideoItems((prev) =>
+      prev.map((it) => (it.id === id ? { ...it, keyframes: it.keyframes.filter((k) => Math.abs(k.time - time) >= 0.05) } : it))
+    );
+  };
+
+  // 현재 재생 위치를 클릭하면, 그 시점에 적용 중인 마커 목록(가장 최근 키프레임 것을 그대로
+  // 이어받음)을 기준으로 토끼를 추가/제거하고, 정확히 지금 이 시각의 키프레임으로 저장한다.
+  // 이미 이 시각(±50ms) 근처에 키프레임이 있으면 그 키프레임을 그대로 고쳐 쓰고, 없으면 새로
+  // 만든다 — 그래서 "저장" 버튼 없이 클릭하는 즉시 바로 반영된다.
+  const handleVideoOverlayClick = (e: React.MouseEvent<HTMLDivElement>) => {
+    const item = activeVideoItem;
+    const video = videoElRef.current;
+    if (!item || !video || !item.manualMode || !video.videoWidth) return;
+    const rect = e.currentTarget.getBoundingClientRect();
+    const fx = (e.clientX - rect.left) / rect.width;
+    const fy = (e.clientY - rect.top) / rect.height;
+    const time = video.currentTime;
+    const activeMarkers = getActiveKeyframeMarkers(item.keyframes, time);
+
+    const hitIdx = activeMarkers.findIndex((m) => {
+      const dxPx = (fx - m.fx) * video.videoWidth;
+      const dyPx = (fy - m.fy) * video.videoHeight;
+      const rPx = m.fr * video.videoWidth;
+      return Math.hypot(dxPx, dyPx) <= rPx;
+    });
+    const newMarkers =
+      hitIdx >= 0
+        ? activeMarkers.filter((_, i) => i !== hitIdx)
+        : [...activeMarkers, { id: uid(), fx, fy, fr: videoManualSizePct / 100 / 2 }];
+
+    setVideoItems((prev) =>
+      prev.map((it) => {
+        if (it.id !== item.id) return it;
+        const existingIdx = it.keyframes.findIndex((k) => Math.abs(k.time - time) < 0.05);
+        const keyframes =
+          existingIdx >= 0
+            ? it.keyframes.map((k, i) => (i === existingIdx ? { ...k, markers: newMarkers } : k))
+            : [...it.keyframes, { time, markers: newMarkers }].sort((a, b) => a.time - b.time);
+        return { ...it, keyframes };
+      })
+    );
+  };
+
   const pickSupportedMimeType = (): string => {
     const candidates = [
       'video/mp4;codecs=h264',
@@ -527,14 +634,19 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
   const processVideoQueue = async () => {
     setIsProcessing(true);
     cancelRef.current = false;
-    setStatusMessage('얼굴 인식 모델을 준비하는 중입니다...');
 
-    try {
-      await ensureModelsLoaded();
-    } catch (err: any) {
-      setStatusMessage(`❌ 모델 로딩 실패: ${err.message || err}`);
-      setIsProcessing(false);
-      return;
+    // 수동 모드 영상은 얼굴 인식 모델이 필요 없다 — 배치 안에 자동 모드 영상이 하나도 없으면
+    // 모델 로딩 자체를 건너뛴다(모델 CDN이 막혀있어도 수동 모드는 그대로 쓸 수 있어야 하므로).
+    const needsAutoModel = videoItems.some((it) => it.status !== 'done' && !it.manualMode);
+    if (needsAutoModel) {
+      setStatusMessage('얼굴 인식 모델을 준비하는 중입니다...');
+      try {
+        await ensureModelsLoaded();
+      } catch (err: any) {
+        setStatusMessage(`❌ 모델 로딩 실패: ${err.message || err}`);
+        setIsProcessing(false);
+        return;
+      }
     }
 
     for (let i = 0; i < videoItems.length; i++) {
@@ -547,8 +659,13 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
           ? `영상 처리 중 (${i + 1}/${videoItems.length})... 영상 길이만큼 시간이 걸려요.`
           : '영상을 처리하는 중입니다... (영상 길이만큼 시간이 걸려요)'
       );
-      // eslint-disable-next-line no-await-in-loop
-      await processOneVideo(item.id, item.objectUrl);
+      if (item.manualMode) {
+        // eslint-disable-next-line no-await-in-loop
+        await processOneVideoManual(item);
+      } else {
+        // eslint-disable-next-line no-await-in-loop
+        await processOneVideo(item.id, item.objectUrl);
+      }
     }
 
     setIsProcessing(false);
@@ -687,6 +804,95 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
     setVideoItems((prev) =>
       prev.map((it) =>
         it.id === id ? { ...it, status: 'done', resultUrl: url, resultExt: ext, faceRatio: ratio, progress: 1 } : it
+      )
+    );
+  };
+
+  // 수동 모드 렌더링 — processOneVideo와 녹화 파이프라인(캔버스+MediaRecorder+무음+워터마크)은
+  // 동일하지만, 얼굴 인식/스무딩 트래킹 대신 사용자가 미리 찍어둔 키프레임에서 그 시점의
+  // 마커를 그대로 가져와 그린다.
+  const processOneVideoManual = async (item: VideoItem) => {
+    const video = videoElRef.current;
+    const canvas = canvasRef.current;
+    const bunny = bunnyRef.current;
+    if (!video || !canvas) return;
+
+    setVideoItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, status: 'processing', progress: 0 } : it)));
+
+    video.src = item.objectUrl;
+    video.load();
+    await new Promise<void>((resolve) => {
+      video.onloadedmetadata = () => resolve();
+    });
+
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const mimeType = pickSupportedMimeType();
+    if (!mimeType) {
+      setVideoItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, status: 'error' } : it)));
+      setStatusMessage('❌ 이 브라우저는 영상 녹화(MediaRecorder)를 지원하지 않습니다.');
+      return;
+    }
+    const ext = mimeType.includes('mp4') ? 'mp4' : 'webm';
+
+    const stream = (canvas as any).captureStream(30) as MediaStream;
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(stream, { mimeType });
+    recorder.ondataavailable = (e) => {
+      if (e.data.size > 0) chunks.push(e.data);
+    };
+    const stopped = new Promise<void>((resolve) => {
+      recorder.onstop = () => resolve();
+    });
+
+    video.currentTime = 0;
+    video.muted = true;
+    recorder.start();
+    await video.play();
+
+    await new Promise<void>((resolve) => {
+      const step = () => {
+        if (cancelRef.current || video.paused || video.ended) {
+          resolve();
+          return;
+        }
+        ctx.drawImage(video, 0, 0, canvas.width, canvas.height);
+
+        const markers = getActiveKeyframeMarkers(item.keyframes, video.currentTime);
+        markers.forEach((m) => {
+          const cx = m.fx * canvas.width;
+          const cy = m.fy * canvas.height;
+          const r = m.fr * canvas.width;
+          if (mode === 'rabbit' && bunny) {
+            const diam = r * 2;
+            ctx.drawImage(bunny, cx - diam / 2, cy - diam * 0.56, diam, diam);
+          } else {
+            drawPixelate(ctx, video, { x: cx - r, y: cy - r, width: r * 2, height: r * 2 }, pixelSize);
+          }
+        });
+        drawWatermark(ctx, canvas.width, canvas.height, bunny);
+
+        const progress = video.duration ? video.currentTime / video.duration : 0;
+        setVideoItems((prev) => prev.map((it) => (it.id === item.id ? { ...it, progress } : it)));
+        requestAnimationFrame(() => {
+          step();
+        });
+      };
+      step();
+    });
+
+    recorder.stop();
+    video.pause();
+    await stopped;
+
+    const blob = new Blob(chunks, { type: mimeType });
+    const url = URL.createObjectURL(blob);
+    setVideoItems((prev) =>
+      prev.map((it) =>
+        it.id === item.id ? { ...it, status: 'done', resultUrl: url, resultExt: ext, faceRatio: null, progress: 1 } : it
       )
     );
   };
@@ -917,14 +1123,109 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
                 />
               )}
               {mediaKind === 'video' && activeVideoItem && !activeVideoItem.resultUrl && (
-                <video
-                  ref={videoElRef}
-                  src={activeVideoItem.objectUrl}
-                  controls
-                  playsInline
-                  muted
-                  style={{ maxWidth: '100%', maxHeight: '480px', borderRadius: '8px' }}
-                />
+                <div style={{ display: 'inline-block', position: 'relative' }}>
+                  <video
+                    ref={videoElRef}
+                    src={activeVideoItem.objectUrl}
+                    controls
+                    playsInline
+                    muted
+                    onTimeUpdate={(e) => setVideoScrubTime(e.currentTarget.currentTime)}
+                    onSeeked={(e) => setVideoScrubTime(e.currentTarget.currentTime)}
+                    style={{ maxWidth: '100%', maxHeight: '480px', borderRadius: '8px', display: 'block' }}
+                  />
+                  {activeVideoItem.manualMode && (
+                    <div
+                      onClick={handleVideoOverlayClick}
+                      style={{ position: 'absolute', inset: 0, cursor: 'crosshair' }}
+                    >
+                      {getActiveKeyframeMarkers(activeVideoItem.keyframes, videoScrubTime).map((m) => (
+                        <div
+                          key={m.id}
+                          style={{
+                            position: 'absolute',
+                            left: `${m.fx * 100}%`,
+                            top: `${m.fy * 100}%`,
+                            width: `${m.fr * 2 * 100}%`,
+                            aspectRatio: '1 / 1',
+                            transform: 'translate(-50%, -50%)',
+                            borderRadius: '50%',
+                            border: '3px solid #03C75A',
+                            background: 'rgba(3,199,90,0.25)',
+                            pointerEvents: 'none',
+                          }}
+                        />
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+              {mediaKind === 'video' && activeVideoItem && !activeVideoItem.resultUrl && activeVideoItem.manualMode && (
+                <div style={{ marginTop: '10px', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '8px' }}>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <button onClick={() => stepVideoTime(-0.5)} className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.78rem' }}>
+                      ◀ 0.5초
+                    </button>
+                    <button onClick={() => stepVideoTime(-0.1)} className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.78rem' }}>
+                      ◀ 0.1초
+                    </button>
+                    <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)', minWidth: '90px', textAlign: 'center' }}>
+                      {videoScrubTime.toFixed(1)}s / {(videoElRef.current?.duration || 0).toFixed(1)}s
+                    </span>
+                    <button onClick={() => stepVideoTime(0.1)} className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.78rem' }}>
+                      0.1초 ▶
+                    </button>
+                    <button onClick={() => stepVideoTime(0.5)} className="btn-secondary" style={{ padding: '6px 10px', fontSize: '0.78rem' }}>
+                      0.5초 ▶
+                    </button>
+                  </div>
+                  <p style={{ fontSize: '0.76rem', color: 'var(--text-muted)', textAlign: 'center' }}>
+                    영상 위를 눌러서 토끼를 배치/제거하세요. 놓은 자리는 다음 클릭 시점까지 그대로 유지돼요 —
+                    얼굴이 움직이면 그 시점으로 이동해서 다시 눌러 위치를 갱신해주세요.
+                  </p>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '8px', width: '100%', maxWidth: '320px' }}>
+                    <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>크기</span>
+                    <input
+                      type="range"
+                      min={6}
+                      max={40}
+                      value={videoManualSizePct}
+                      onChange={(e) => setVideoManualSizePct(Number(e.target.value))}
+                      style={{ flex: 1 }}
+                    />
+                    <span style={{ fontSize: '0.76rem', color: 'var(--text-muted)' }}>{videoManualSizePct}%</span>
+                  </div>
+                  {activeVideoItem.keyframes.length > 0 && (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px', justifyContent: 'center' }}>
+                      {activeVideoItem.keyframes.map((kf) => (
+                        <span
+                          key={kf.time}
+                          onClick={() => stepVideoTime(kf.time - videoScrubTime)}
+                          style={{
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '4px',
+                            fontSize: '0.72rem',
+                            padding: '3px 8px',
+                            borderRadius: '999px',
+                            cursor: 'pointer',
+                            background: Math.abs(kf.time - videoScrubTime) < 0.05 ? 'rgba(3,199,90,0.25)' : 'rgba(255,255,255,0.06)',
+                            border: '1px solid var(--border-color)',
+                          }}
+                        >
+                          {kf.time.toFixed(1)}s ({kf.markers.length}개)
+                          <X
+                            size={11}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              handleDeleteKeyframe(kf.time);
+                            }}
+                          />
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
               {mediaKind === 'video' && <canvas ref={canvasRef} style={{ display: 'none' }} />}
               {mediaKind === 'video' && activeVideoItem?.resultUrl && (
@@ -935,8 +1236,19 @@ export const MosaicStudio: React.FC<MosaicStudioProps> = ({ initialFiles, onFile
               )}
             </div>
 
+            {!isProcessing && mediaKind === 'video' && activeVideoItem && !activeVideoItem.resultUrl && (
+              <button onClick={toggleVideoManualMode} className={activeVideoItem.manualMode ? 'btn-naver' : 'btn-secondary'}>
+                <Hand size={16} />
+                {activeVideoItem.manualMode ? '자동 인식 모드로 전환' : '수동으로 프레임 확인하며 배치'}
+              </button>
+            )}
+
             {!isProcessing && mediaKind === 'video' && videoItems.some((it) => it.status !== 'done') && (
-              <button onClick={processVideoQueue} className="btn-naver" disabled={!modelReady}>
+              <button
+                onClick={processVideoQueue}
+                className="btn-naver"
+                disabled={videoItems.some((it) => it.status !== 'done' && !it.manualMode) && !modelReady}
+              >
                 <Rabbit size={18} />
                 {videoItems.length > 1 ? '전체 영상 모자이크 시작' : '토끼 모자이크 시작'}
               </button>
