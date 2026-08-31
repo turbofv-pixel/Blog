@@ -14,3 +14,8 @@
 4. 20260726_110334.mp4
    촬영 시각(추정 — 사진 파일의 수정 시각 기준): 2026-07-26 11:04
    직접 메모: 아이가 실제 콜라주를 만드는 동영상 아이가 유치원에 다니기 시작하면서 부터 미술에도 관심이 꽤나 생긴거 같아 뿌듯하네여 ㅋㅋㅋ
+
+5. 1000028117.jpg
+   촬영 시각: 2026-08-31 12:39
+   AI 태그: Likely contains: window screen (10%), hand-held computer, hand-held microcomputer (6%), joystick (6%), desk (6%), television, television system (4%)
+   직접 메모: 처음 게임창작소에 도착한 아이는 여러 플레이스테이션 게임중 자동차 게임을 골랐다 아빠는 예상했단다 ㅋㅋㅋ
