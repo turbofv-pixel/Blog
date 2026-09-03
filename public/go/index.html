@@ -1,0 +1,84 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="robots" content="noindex" />
+<title>이동 중...</title>
+<style>
+  body {
+    margin: 0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #fffaf7;
+    color: #2b2622;
+    font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+    text-align: center;
+  }
+  main { padding: 24px; }
+  a { color: #e0507a; }
+</style>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-FKW051Z13L"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+  gtag('js', new Date());
+  // 리다이렉트 페이지 자체는 페이지뷰로 잡지 않고, 아래 outbound_click 이벤트만 클릭수로 집계한다.
+  gtag('config', 'G-FKW051Z13L', { send_page_view: false });
+</script>
+</head>
+<body>
+<main>
+  <p>이동 중입니다… 잠시만 기다려주세요.</p>
+  <p><a id="fallback-link" href="#">여기를 눌러 이동</a></p>
+</main>
+<script>
+  (function () {
+    var params = new URLSearchParams(window.location.search);
+    var to = params.get('to');
+    var label = params.get('label') || '(no-label)';
+
+    if (!to) {
+      document.querySelector('main').innerHTML = '<p>잘못된 링크예요. <code>to</code> 파라미터가 없어요.</p>';
+      return;
+    }
+
+    // 안전장치: 우리 사이트/크몽/네이버 도메인으로만 리다이렉트를 허용한다.
+    var ALLOWED_HOSTS = ['kmong.com', 'www.kmong.com', 'blog.naver.com'];
+    var url;
+    try {
+      url = new URL(to);
+    } catch (e) {
+      document.querySelector('main').innerHTML = '<p>잘못된 링크예요.</p>';
+      return;
+    }
+    if (ALLOWED_HOSTS.indexOf(url.hostname) === -1) {
+      document.querySelector('main').innerHTML = '<p>허용되지 않은 이동 대상이에요.</p>';
+      return;
+    }
+
+    document.getElementById('fallback-link').href = url.href;
+
+    var redirected = false;
+    function doRedirect() {
+      if (redirected) return;
+      redirected = true;
+      window.location.replace(url.href);
+    }
+
+    gtag('event', 'outbound_click', {
+      link_label: label,
+      destination_url: url.href,
+      event_callback: doRedirect,
+      event_timeout: 1000,
+    });
+
+    // event_callback이 어떤 이유로든 안 불리는 경우를 대비한 안전장치
+    setTimeout(doRedirect, 1200);
+  })();
+</script>
+</body>
+</html>
