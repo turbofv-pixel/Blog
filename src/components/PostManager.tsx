@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { Category, Post } from '../types';
 import { FileText, Copy, Check, Plus, Tag, Calendar, Folder, ExternalLink, Sparkles, Code, Edit3, Trash2, Download, Film, ShieldAlert } from 'lucide-react';
 import { marked } from 'marked';
@@ -28,6 +28,11 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   const [selectedCategory, setSelectedCategory] = useState<Category>('전체');
   const [selectedPost, setSelectedPost] = useState<Post>(initialPosts[0]);
   const [copiedStatus, setCopiedStatus] = useState<false | 'rich' | 'plain'>(false);
+  // 이미 올린 글을 살짝만 고쳤을 때, 전체를 복사해서 붙여넣고 바뀐 부분만 찾아 대체하는
+  // 번거로움을 없애기 위한 "선택 부분만 복사" 상태 — 위 copiedStatus(전체 복사)와는 별개로
+  // 관리해서 두 버튼의 완료/실패 표시가 서로 덮어쓰지 않게 한다.
+  const [selectionCopyStatus, setSelectionCopyStatus] = useState<false | 'rich' | 'plain' | 'empty'>(false);
+  const previewRef = useRef<HTMLDivElement>(null);
   const [copiedImageSrc, setCopiedImageSrc] = useState<string | null>(null);
   const [isEditing, setIsEditing] = useState<boolean>(false);
   const [editedContent, setEditedContent] = useState<string>(initialPosts[0]?.content || '');
@@ -179,6 +184,46 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
     });
   };
 
+  // Naver SmartEditor inline-style wrapper, shared by the full-post copy, the preview, and the
+  // partial-selection copy below — kept in one place so all three always render/paste identically.
+  const wrapNaverStyle = (innerHtml: string): string => `
+    <div style="font-family: 'Maru Buri', 'Nanum Gothic', sans-serif; color: #222222; font-size: 16px; line-height: 1.8;">
+      ${innerHtml}
+    </div>
+  `;
+
+  const replaceWithNotice = (el: Element, kind: string, src: string) => {
+    const fileName = src.split('/').pop() || kind;
+    const notice = document.createElement('p');
+    notice.style.cssText = 'padding:12px 16px;background:#f2f5f3;border-left:4px solid #03C75A;color:#333;';
+    notice.textContent = `[${kind}: ${fileName}] 아래 "사진·동영상 다운로드" 목록에서 파일을 저장한 뒤, 네이버 에디터의 사진/동영상 추가 버튼으로 직접 올려주세요.`;
+    el.replaceWith(notice);
+  };
+
+  // Text/formatting pastes cleanly into Naver's editor on its own. Photos are trickier: Naver's
+  // paste sanitizer drops <img src> pointing at an outside domain and strips data URIs outright,
+  // but it keeps one pointing at its own CDN (postfiles.pstatic.net etc.) just fine — so any
+  // photo with a registered Naver URL (see naverUrlMap) gets embedded for real, right where it
+  // sits in the article. Anything without one yet (and all video, since browsers can't put video
+  // bytes on the clipboard at all) falls back to a short manual-upload notice pointing at the
+  // list below. Shared by the full-post copy (container built straight from markdown, so
+  // img/video `src` IS already the original relative path) and the partial-selection copy
+  // (container cloned from the rendered preview, where `src` has been rewritten to an absolute
+  // URL for display — `data-md-src` carries the original relative path there instead, see
+  // getNaverFormattedHtml) — falling back to `src` when there's no `data-md-src` covers both.
+  const processMediaForNaver = (container: HTMLElement, urlMap: Record<string, string>) => {
+    container.querySelectorAll('img').forEach((img) => {
+      const key = img.getAttribute('data-md-src') || img.getAttribute('src') || '';
+      const naverUrl = urlMap[key];
+      if (naverUrl) img.setAttribute('src', naverUrl);
+      else replaceWithNotice(img, '사진', key);
+    });
+    container.querySelectorAll('video').forEach((video) => {
+      const key = video.getAttribute('data-md-src') || video.getAttribute('src') || '';
+      replaceWithNotice(video, '동영상', key);
+    });
+  };
+
   // Convert Markdown to Naver SmartEditor ONE formatted HTML (used for on-screen preview).
   // Post content references media with root-absolute paths like "/images/x.jpg", which the
   // browser resolves against the domain root — wrong once the app is served under a base path
@@ -189,61 +234,52 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   // src the instant `container.innerHTML` was assigned (img/video start loading as soon as src
   // is set, even while detached from the document), so the network tab fills up with 404s that
   // never affected what's shown. String-level rewrite first means only the correct URL is ever
-  // requested.
+  // requested. Each rewritten tag also keeps the original relative path in `data-md-src` — the
+  // "선택한 부분만 복사" feature clones straight out of this preview, and needs that original
+  // path back to look photos up in naverUrlMap (which is keyed by the relative path, not the
+  // absolute one shown here).
   const getNaverFormattedHtml = (markdownText: string) => {
     try {
       const rawHtml = (marked.parse(markdownText) as string).replace(
         /(<(?:img|video)\b[^>]*\bsrc=")([^"]+)(")/g,
-        (_match, pre, src, post) => `${pre}${toAbsoluteUrl(src)}${post}`
+        (_match, pre, src, post) => `${pre}${toAbsoluteUrl(src)}${post} data-md-src="${src}"`
       );
       const container = document.createElement('div');
       container.innerHTML = rawHtml;
       styleTables(container);
-      // Wrap with Naver SmartEditor inline styles
-      return `
-        <div style="font-family: 'Maru Buri', 'Nanum Gothic', sans-serif; color: #222222; font-size: 16px; line-height: 1.8;">
-          ${container.innerHTML}
-        </div>
-      `;
+      return wrapNaverStyle(container.innerHTML);
     } catch (e) {
       return markdownText;
     }
   };
 
-  // Build the HTML that actually goes on the clipboard. Text/formatting pastes cleanly into
-  // Naver's editor on its own. Photos are trickier: Naver's paste sanitizer drops <img src>
-  // pointing at an outside domain and strips data URIs outright, but it keeps one pointing at
-  // its own CDN (postfiles.pstatic.net etc.) just fine — so any photo with a registered Naver
-  // URL (see naverUrlMap) gets embedded for real, right where it sits in the article. Anything
-  // without one yet (and all video, since browsers can't put video bytes on the clipboard at
-  // all) falls back to a short manual-upload notice pointing at the list below.
   const buildNaverClipboardHtml = (markdownText: string, urlMap: Record<string, string>): string => {
     const rawHtml = marked.parse(markdownText) as string;
     const container = document.createElement('div');
     container.innerHTML = rawHtml;
     styleTables(container);
+    processMediaForNaver(container, urlMap);
+    return wrapNaverStyle(container.innerHTML);
+  };
 
-    const replaceWithNotice = (el: Element, kind: string, src: string) => {
-      const fileName = src.split('/').pop() || kind;
-      const notice = document.createElement('p');
-      notice.style.cssText = 'padding:12px 16px;background:#f2f5f3;border-left:4px solid #03C75A;color:#333;';
-      notice.textContent = `[${kind}: ${fileName}] 아래 "사진·동영상 다운로드" 목록에서 파일을 저장한 뒤, 네이버 에디터의 사진/동영상 추가 버튼으로 직접 올려주세요.`;
-      el.replaceWith(notice);
-    };
+  // "선택한 부분만 복사": 이미 올린 글을 한두 군데만 고쳤을 때, 전체를 복사해서 붙여넣고
+  // 바뀐 부분만 찾아 대체하는 번거로움을 없애준다 — 미리보기에서 원하는 부분만 마우스로
+  // 드래그해 선택한 뒤 이 함수를 부르면, 그 선택 범위만 똑같은 네이버 서식으로 클립보드에
+  // 올라간다. 선택이 없거나 미리보기 바깥을 선택한 경우 null을 돌려준다.
+  const getSelectedNaverHtml = (): string | null => {
+    const sel = window.getSelection();
+    if (!sel || sel.rangeCount === 0 || sel.isCollapsed) return null;
+    const range = sel.getRangeAt(0);
+    const previewEl = previewRef.current;
+    if (!previewEl || !previewEl.contains(range.commonAncestorContainer)) return null;
 
-    container.querySelectorAll('img').forEach((img) => {
-      const src = img.getAttribute('src') || '';
-      const naverUrl = urlMap[src];
-      if (naverUrl) img.setAttribute('src', naverUrl);
-      else replaceWithNotice(img, '사진', src);
-    });
-    container.querySelectorAll('video').forEach((video) => replaceWithNotice(video, '동영상', video.getAttribute('src') || ''));
+    const container = document.createElement('div');
+    container.appendChild(range.cloneContents());
+    styleTables(container);
+    processMediaForNaver(container, naverUrlMap);
 
-    return `
-      <div style="font-family: 'Maru Buri', 'Nanum Gothic', sans-serif; color: #222222; font-size: 16px; line-height: 1.8;">
-        ${container.innerHTML}
-      </div>
-    `;
+    const html = container.innerHTML.trim();
+    return html ? wrapNaverStyle(html) : null;
   };
 
   // One-click Copy for Naver SmartEditor
@@ -274,6 +310,40 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
         setTimeout(() => setCopiedStatus(false), 4500);
       } catch (fallbackErr) {
         alert('복사에 실패했습니다. 아래 텍스트를 직접 복사해 주세요.');
+      }
+    }
+  };
+
+  // "선택한 부분만 복사" 버튼 핸들러 — handleCopyToNaver와 같은 rich→plain 폴백 구조를
+  // 그대로 따르되, 상태(selectionCopyStatus)는 따로 둬서 두 버튼의 완료 표시가 서로 섞이지
+  // 않게 한다.
+  const handleCopySelectionToNaver = async () => {
+    const htmlContent = getSelectedNaverHtml();
+    if (!htmlContent) {
+      setSelectionCopyStatus('empty');
+      setTimeout(() => setSelectionCopyStatus(false), 2500);
+      return;
+    }
+    const plainText = window.getSelection()?.toString() || '';
+    try {
+      const blobHtml = new Blob([htmlContent], { type: 'text/html' });
+      const blobText = new Blob([plainText], { type: 'text/plain' });
+      const clipboardItem = new ClipboardItem({
+        'text/html': blobHtml,
+        'text/plain': blobText,
+      });
+
+      await navigator.clipboard.write([clipboardItem]);
+      setSelectionCopyStatus('rich');
+      setTimeout(() => setSelectionCopyStatus(false), 3000);
+    } catch (err) {
+      console.error('선택 영역 네이버 서식 복사 실패, 일반 텍스트로 대체합니다:', err);
+      try {
+        await navigator.clipboard.writeText(plainText);
+        setSelectionCopyStatus('plain');
+        setTimeout(() => setSelectionCopyStatus(false), 4500);
+      } catch (fallbackErr) {
+        alert('선택 영역 복사에 실패했습니다. 직접 드래그해서 복사해 주세요.');
       }
     }
   };
@@ -681,15 +751,35 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
           </div>
         ) : (
           <div>
-            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
+            <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '10px' }}>
               <span style={{ fontSize: '0.9rem', fontWeight: 600, color: 'var(--text-muted)', display: 'flex', alignItems: 'center', gap: '6px' }}>
                 <ExternalLink size={16} color="#03C75A" />
                 네이버 블로그 스마트에디터 미리보기 (Naver Style Preview)
               </span>
+              <button
+                onClick={handleCopySelectionToNaver}
+                className="btn-secondary"
+                style={{ fontSize: '0.8rem', padding: '6px 12px' }}
+              >
+                {selectionCopyStatus === 'rich' || selectionCopyStatus === 'plain' ? <Check size={14} /> : <Copy size={14} />}
+                {selectionCopyStatus === 'rich'
+                  ? '선택 부분 복사 완료!'
+                  : selectionCopyStatus === 'plain'
+                  ? '서식 없이 복사됨'
+                  : selectionCopyStatus === 'empty'
+                  ? '먼저 아래에서 부분을 드래그해 선택하세요'
+                  : '선택한 부분만 복사'}
+              </button>
             </div>
+            <p style={{ fontSize: '0.78rem', color: 'var(--text-muted)', marginTop: 0, marginBottom: '12px' }}>
+              이미 올린 글에서 일부만 고쳤을 때, 아래 미리보기에서 바뀐 부분만 마우스로 드래그해 선택한 뒤
+              위 버튼을 누르면 그 부분만 네이버 서식 그대로 복사돼요 — 전체를 복사해서 붙여넣고 나머지를
+              지울 필요 없이, 네이버 글쓰기 창에서 바뀐 부분만 바로 덮어쓰면 됩니다.
+            </p>
 
             {/* Naver Styled Preview Container */}
-            <div 
+            <div
+              ref={previewRef}
               className="naver-smart-editor-preview"
               dangerouslySetInnerHTML={{ __html: getNaverFormattedHtml(editedContent) }}
             />
