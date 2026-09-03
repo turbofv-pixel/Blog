@@ -36,14 +36,16 @@ going forward; existing posts don't need to be retrofitted unless asked.
 Every new 육아-category post closes with a short, low-key call-to-action promoting the
 전자책(e-book) — **sold on 크몽(Kmong), not given away free** (source manuscript lives in the
 separate `turbofv-pixel/E-book` repo) — 2~3 sentences, placed after the main content and
-before the closing hashtags, not a boxed banner. Tie it naturally to whatever the post was
-actually about (e.g. "오늘 같은 하루도 저희 전자책에 좀 더 자세히 담겨있어요" style), then link
-to that book's 크몽 상품(gig) page so readers can buy it, e.g.
-`https://kmong.com/gig/810522` for "다섯 살, 우리가 함께 만든 계절". If a new e-book's 크몽
-gig link isn't already known, ask the user for it rather than guessing or reusing a different
-book's link. Frame the CTA as an invitation to buy — never "무료로 읽어보세요" or anything
-implying free access. Keep the tone as a gentle mention, not a hard sell. Applies to new posts
-going forward; existing 육아 posts don't need to be retrofitted unless asked.
+before the closing hashtags. Tie it naturally to whatever the post was actually about (e.g.
+"오늘 같은 하루도 저희 전자책에 좀 더 자세히 담겨있어요" style), then link to that book's 크몽
+상품(gig) page so readers can buy it, e.g. `https://kmong.com/gig/810522` for "다섯 살, 우리가
+함께 만든 계절". If a new e-book's 크몽 gig link isn't already known, ask the user for it
+rather than guessing or reusing a different book's link. Frame the CTA as an invitation to
+buy — never "무료로 읽어보세요" or anything implying free access. Keep the tone as a gentle
+mention, not a hard sell — a plain `---` divider above it and the link on its own line (e.g.
+`👉 [전자책 만나보러 가기](...)`) is enough separation from the main content; don't wrap it in a
+bordered/background box like a banner ad. Applies to new posts going forward; existing 육아
+posts don't need to be retrofitted unless asked.
 
 ## Parenting post media: the user processes it themselves now, via MosaicStudio
 
