@@ -10,11 +10,11 @@ const samplePosts: Post[] = [
   {
     id: 'post-53',
     title: '드디어 첫 전자책을 출간했어요 - 「다섯 살, 우리가 함께 만든 계절」 소개와 앞으로의 계획',
-    category: 'IT',
+    category: '전자책',
     date: '2026-09-03',
     tags: ['전자책', '전자책출간', '육아에세이', '사이드프로젝트', '자체출판', 'IT', 'Nextjs'],
     naverCategory: 'IT·컴퓨터',
-    filePath: 'posts/it/ebook-launch-dad-raising-five.md',
+    filePath: 'posts/ebook/ebook-launch-dad-raising-five.md',
     content: `# 드디어 첫 전자책을 출간했어요 - 「다섯 살, 우리가 함께 만든 계절」 소개와 앞으로의 계획
 
 안녕하세요 대왕토끼입니다~ 🐰
