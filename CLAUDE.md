@@ -31,6 +31,20 @@ The prefix already says "아이와 가볼만한곳", so don't repeat that phrase
 title (e.g. not `... 아이와 가볼만한곳 후기 ...` — just `... 후기 ...`). Applies to new posts
 going forward; existing posts don't need to be retrofitted unless asked.
 
+## Parenting posts end with a short, natural e-book promo CTA
+
+Every new 육아-category post closes with a short, low-key call-to-action promoting the
+전자책(e-book) — **sold on 크몽(Kmong), not given away free** (source manuscript lives in the
+separate `turbofv-pixel/E-book` repo) — 2~3 sentences, placed after the main content and
+before the closing hashtags, not a boxed banner. Tie it naturally to whatever the post was
+actually about (e.g. "오늘 같은 하루도 저희 전자책에 좀 더 자세히 담겨있어요" style), then link
+to that book's 크몽 상품(gig) page so readers can buy it, e.g.
+`https://kmong.com/gig/810522` for "다섯 살, 우리가 함께 만든 계절". If a new e-book's 크몽
+gig link isn't already known, ask the user for it rather than guessing or reusing a different
+book's link. Frame the CTA as an invitation to buy — never "무료로 읽어보세요" or anything
+implying free access. Keep the tone as a gentle mention, not a hard sell. Applies to new posts
+going forward; existing 육아 posts don't need to be retrofitted unless asked.
+
 ## Parenting post media: the user processes it themselves now, via MosaicStudio
 
 Earlier posts had Claude do face-detection + bunny-sticker processing directly (Python

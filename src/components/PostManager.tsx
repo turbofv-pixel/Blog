@@ -291,7 +291,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
   // Create New Post Modal / Action
   const handleCreateNewPost = () => {
     const categoryName = selectedCategory === '전체' ? '육아' : selectedCategory;
-    const categoryDir = categoryName === '육아' ? 'parenting' : categoryName === 'IT' ? 'it' : categoryName === '주식' ? 'stock' : 'travel';
+    const categoryDir = categoryName === '육아' ? 'parenting' : categoryName === 'IT' ? 'it' : categoryName === '주식' ? 'stock' : categoryName === '전자책' ? 'ebook' : 'travel';
     const newPost: Post = {
       id: `post-${Date.now()}`,
       title: `[새 포스트] ${categoryName} 주제 글`,
@@ -315,6 +315,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
       case 'IT': return 'badge-it';
       case '여행': return 'badge-travel';
       case '주식': return 'badge-stock';
+      case '전자책': return 'badge-ebook';
       default: return 'badge-it';
     }
   };
@@ -331,7 +332,7 @@ export const PostManager: React.FC<PostManagerProps> = ({ initialPosts }) => {
             카테고리 선택
           </h3>
           <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-            {(['전체', '육아', 'IT', '여행', '주식', '부동산'] as Category[]).map((cat) => (
+            {(['전체', '육아', 'IT', '여행', '주식', '부동산', '전자책'] as Category[]).map((cat) => (
               <button
                 key={cat}
                 onClick={() => setSelectedCategory(cat)}
