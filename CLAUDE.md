@@ -38,8 +38,12 @@ Every new 육아-category post closes with a short, low-key call-to-action promo
 separate `turbofv-pixel/E-book` repo) — 2~3 sentences, placed after the main content and
 before the closing hashtags. Tie it naturally to whatever the post was actually about (e.g.
 "오늘 같은 하루도 저희 전자책에 좀 더 자세히 담겨있어요" style), then link to **both** that
-book's 크몽 상품(gig) page **through the `/go/` click-tracking redirector** (see next section)
-— currently `https://blog-eta-blond-71.vercel.app/go/?to=https%3A%2F%2Fkmong.com%2Fgig%2F810522&label=<post-slug>_kmong`
+book's 크몽 **셀프마케팅(self-marketing) 링크** (Kmong's own referral-tracking URL for the
+seller, shaped `https://kmong.com/self-marketing/<gig-id>/<token>` — prefer this over the
+plain `/gig/<id>` page when the user has one, since it's what the 크몽 판매자 페이지 uses to
+attribute traffic back to the seller) — **through the `/go/` click-tracking redirector** (see
+next section) — currently
+`https://blog-eta-blond-71.vercel.app/go/?to=https%3A%2F%2Fkmong.com%2Fself-marketing%2F810522%2FzN1eTTbHG7&label=<post-slug>_kmong`
 for "다섯 살, 우리가 함께 만든 계절" (swap `<post-slug>` for the post's own slug so each
 post's clicks are distinguishable in GA4). Never link straight to
 `https://turbofv-pixel.github.io/Blog/go/...` in a published post — the user doesn't want that
