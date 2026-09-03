@@ -38,12 +38,12 @@ Every new 육아-category post closes with a short, low-key call-to-action promo
 separate `turbofv-pixel/E-book` repo) — 2~3 sentences, placed after the main content and
 before the closing hashtags. Tie it naturally to whatever the post was actually about (e.g.
 "오늘 같은 하루도 저희 전자책에 좀 더 자세히 담겨있어요" style), then link to **both** that
-book's 크몽 상품(gig) page **through the `/go/` click-tracking redirector** (see next
-section) — e.g. for "다섯 살, 우리가 함께 만든 계절",
-`https://turbofv-pixel.github.io/Blog/go/?to=https%3A%2F%2Fkmong.com%2Fgig%2F810522&label=<post-slug>_kmong`
-(swap `<post-slug>` for the post's own slug so each post's clicks are distinguishable in GA4;
-the raw `https://kmong.com/gig/810522` is the underlying gig page, not what gets linked in
-posts) — **and** the blog's own e-book launch/promo post (currently "드디어 첫 전자책을
+book's 크몽 상품(gig) page **through a bit.ly link that wraps the `/go/` click-tracking
+redirector** (see next section for why two hops) — currently `https://bit.ly/4gNwLga` for
+"다섯 살, 우리가 함께 만든 계절" (destination already points at the maengsan post's `/go/`
+URL). Never paste the raw `https://turbofv-pixel.github.io/Blog/go/...` URL into a published
+post — the user doesn't want that GitHub Pages address visible to readers, which is the whole
+reason for the bit.ly layer in front of it — **and** the blog's own e-book launch/promo post (currently "드디어 첫 전자책을
 출간했어요 - ...", `posts/ebook/ebook-launch-dad-raising-five.md` / `post-53` in
 `src/App.tsx`, published on Naver at `https://blog.naver.com/bigbigrabbit/224399842800`). If
 a new e-book's launch post hasn't been published to Naver yet (no real URL), ask the user for
@@ -60,21 +60,38 @@ lines with a blank line between them (marked doesn't turn a single `\n` into a `
 without one they'd render glued onto the same line); don't wrap it in a
 bordered/background box like a banner ad.
 
-## Click tracking for e-book CTA links: the `/go/` redirector + GA4
+## Click tracking for e-book CTA links: bit.ly (mask) → `/go/` redirector (GA4) → destination
 
 Naver Blog posts can't run custom `<script>` tags, so GA4 can't be embedded directly in a
-published post to track outbound clicks. Instead, `public/go/index.html` is a small
-click-tracking redirect page hosted on this site's own GitHub Pages
-(`https://turbofv-pixel.github.io/Blog/go/`) — link *through* it instead of linking straight
-to the destination, and its GA4 property (measurement ID `G-FKW051Z13L`) logs an
-`outbound_click` event (with `link_label` and `destination_url` params) before forwarding the
-visitor on. Usage: `https://turbofv-pixel.github.io/Blog/go/?to=<url-encoded destination>&label=<short-label>`.
-`to` must resolve to an allow-listed host (`kmong.com`, `www.kmong.com`, `blog.naver.com` —
-extend the `ALLOWED_HOSTS` array in `public/go/index.html` if a CTA ever needs to point
-somewhere else) or the redirector shows an error instead of forwarding; give each post a
-distinct `label` (e.g. `<post-slug>_kmong`) so its clicks are distinguishable in GA4 reports.
-This applies to the 크몽 gig link in every new 육아 post's e-book CTA going forward; existing
-posts don't need to be retrofitted unless asked.
+published post to track outbound clicks. `public/go/index.html` is a small click-tracking
+redirect page hosted on this site's own GitHub Pages (`https://turbofv-pixel.github.io/Blog/go/`)
+whose GA4 property (measurement ID `G-FKW051Z13L`) logs an `outbound_click` event (with
+`link_label` and `destination_url` params) before forwarding the visitor on to the real
+destination. Its URL shape: `https://turbofv-pixel.github.io/Blog/go/?to=<url-encoded
+destination>&label=<short-label>`. `to` must resolve to an allow-listed host (`kmong.com`,
+`www.kmong.com`, `blog.naver.com` — extend the `ALLOWED_HOSTS` array in `public/go/index.html`
+if a CTA ever needs to point somewhere else) or the redirector shows an error instead of
+forwarding.
+
+**The user doesn't want the `turbofv-pixel.github.io` address itself showing up in a
+published post** (it outs this internal tool and their GitHub handle to readers), so that raw
+`/go/...` URL is never what gets pasted into a post. Instead it sits one hop further back,
+behind a bit.ly link that acts purely as a clean-looking mask — bit.ly's own free-tier click
+stats aren't used or trusted here, only its ability to point a short, anonymous-looking URL at
+an arbitrary destination:
+
+```
+네이버 글의 링크 = bit.ly/xxxxx  (깔끔, 정체 노출 없음)
+     → https://turbofv-pixel.github.io/Blog/go/?to=...&label=...  (GA4 클릭 기록)
+     → 실제 목적지 (크몽 상품 페이지 등)
+```
+
+For a new e-book CTA link: give each post its own `label` (e.g. `<post-slug>_kmong`) so its
+clicks are distinguishable in GA4 reports, then ask the user to create (or repoint an existing)
+bit.ly link whose destination is the resulting `/go/?to=...&label=...` URL, and use *that*
+bit.ly link in the post — never the bare `/go/` URL. This applies to the 크몽 gig link in
+every new 육아 post's e-book CTA going forward; existing posts don't need to be retrofitted
+unless asked.
 If a different e-book is being promoted, make (or ask the user for) a matching small card
 image for that book rather than reusing this one. Applies to new posts going forward;
 existing 육아 posts don't need to be retrofitted unless asked.
