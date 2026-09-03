@@ -42,10 +42,14 @@ before the closing hashtags. Tie it naturally to whatever the post was actually 
 함께 만든 계절". If a new e-book's 크몽 gig link isn't already known, ask the user for it
 rather than guessing or reusing a different book's link. Frame the CTA as an invitation to
 buy — never "무료로 읽어보세요" or anything implying free access. Keep the tone as a gentle
-mention, not a hard sell — a plain `---` divider above it and the link on its own line (e.g.
-`👉 [전자책 만나보러 가기](...)`) is enough separation from the main content; don't wrap it in a
-bordered/background box like a banner ad. Applies to new posts going forward; existing 육아
-posts don't need to be retrofitted unless asked.
+mention, not a hard sell — a plain `---` divider above it, the small promo card image
+(`/images/ebook-promo/kmong-cta-card.png` — a reusable compact "book cover + 크몽에서
+만나보기 pill" graphic, not one-off per post) between the CTA sentence and the link line, and
+the link itself on its own line (e.g. `👉 [전자책 만나보러 가기](...)`) is enough to make it
+stand out from the main content; don't wrap it in a bordered/background box like a banner ad.
+If a different e-book is being promoted, make (or ask the user for) a matching small card
+image for that book rather than reusing this one. Applies to new posts going forward;
+existing 육아 posts don't need to be retrofitted unless asked.
 
 ## Parenting post media: the user processes it themselves now, via MosaicStudio
 
