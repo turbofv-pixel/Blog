@@ -117,7 +117,7 @@ naverCategory: "육아일기"
 
 ![다섯 살, 우리가 함께 만든 계절 - 대왕토끼의 전자책, 크몽에서 만나보기](/images/ebook-promo/kmong-cta-card.png)
 
-👉 [전자책 만나보러 가기](https://bit.ly/4gNwLga)
+👉 [전자책 만나보러 가기](https://blog-eta-blond-71.vercel.app/go/?to=https%3A%2F%2Fkmong.com%2Fgig%2F810522&label=maengsan_kmong)
 
 📝 [전자책 소개 글 읽어보기](https://blog.naver.com/bigbigrabbit/224399842800)
 
