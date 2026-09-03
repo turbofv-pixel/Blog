@@ -37,16 +37,21 @@ Every new 육아-category post closes with a short, low-key call-to-action promo
 전자책(e-book) — **sold on 크몽(Kmong), not given away free** (source manuscript lives in the
 separate `turbofv-pixel/E-book` repo) — 2~3 sentences, placed after the main content and
 before the closing hashtags. Tie it naturally to whatever the post was actually about (e.g.
-"오늘 같은 하루도 저희 전자책에 좀 더 자세히 담겨있어요" style), then link to that book's 크몽
-상품(gig) page so readers can buy it, e.g. `https://kmong.com/gig/810522` for "다섯 살, 우리가
-함께 만든 계절". If a new e-book's 크몽 gig link isn't already known, ask the user for it
-rather than guessing or reusing a different book's link. Frame the CTA as an invitation to
+"오늘 같은 하루도 저희 전자책에 좀 더 자세히 담겨있어요" style), then link to **both** that
+book's 크몽 상품(gig) page, e.g. `https://kmong.com/gig/810522` for "다섯 살, 우리가 함께 만든
+계절", **and** the blog's own e-book launch/promo post (currently "드디어 첫 전자책을
+출간했어요 - ...", `posts/ebook/ebook-launch-dad-raising-five.md` / `post-53` in
+`src/App.tsx`) once that post has a real published Naver URL — ask the user for that URL if
+it isn't known yet rather than guessing or leaving a placeholder/dead link; until then, link
+only the 크몽 gig page. If a new e-book's 크몽 gig link isn't already known, ask the user for
+it rather than guessing or reusing a different book's link. Frame the CTA as an invitation to
 buy — never "무료로 읽어보세요" or anything implying free access. Keep the tone as a gentle
 mention, not a hard sell — a plain `---` divider above it, the small promo card image
 (`/images/ebook-promo/kmong-cta-card.png` — a reusable compact "book cover + 크몽에서
-만나보기 pill" graphic, not one-off per post) between the CTA sentence and the link line, and
-the link itself on its own line (e.g. `👉 [전자책 만나보러 가기](...)`) is enough to make it
-stand out from the main content; don't wrap it in a bordered/background box like a banner ad.
+만나보기 pill" graphic, not one-off per post) between the CTA sentence and the link line(s),
+and each link on its own line (e.g. `👉 [전자책 만나보러 가기](...)`, `📝 [전자책 소개 글
+읽어보기](...)`) is enough to make it stand out from the main content; don't wrap it in a
+bordered/background box like a banner ad.
 If a different e-book is being promoted, make (or ask the user for) a matching small card
 image for that book rather than reusing this one. Applies to new posts going forward;
 existing 육아 posts don't need to be retrofitted unless asked.
