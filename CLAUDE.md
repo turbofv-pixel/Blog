@@ -242,3 +242,25 @@ space before the particle both render fine. The stray-`**`-in-rendered-HTML regr
 already run before every post commit (render through `marked.parse()`, grep for leftover
 `**`) catches this — if it fires, reword the sentence rather than assuming the check is
 wrong.
+
+## Affiliate/CTA banner images: never wrap the image itself in a link
+
+For any promo banner (쿠팡파트너스 affiliate ticket link, e-book CTA, etc.), never write
+`[![alt](image)](url)` — a markdown image wrapped in a link. Two independent things break it:
+
+- **Naver's SmartEditor can't make an uploaded image clickable at all** — there's no "add a
+  link to this image" feature in its UI, so any link would be lost the moment the post is
+  published to Naver regardless of how it got there.
+- **`automation/publish-to-naver.mjs`'s block parser can't read it either.** Its
+  `MEDIA_PATTERN` regex only matches the inner `![alt](image)` — the surrounding `[...](url)`
+  link wrapper is left behind as a separate, broken text block (literal `](https://...)` text
+  in the published post).
+
+The working pattern (already used by the e-book CTA, see `CLAUDE.md`'s e-book CTA section):
+ship the banner as a **plain, unlinked** `![alt](image)`, then put the actual link on its own
+line right below it as ordinary markdown text, e.g. `👉 [레고랜드 코리아 리조트 입장권
+예매하기](https://link.coupang.com/a/...)`. `automation/publish-to-naver.mjs` parses that as
+an image block followed by a separate text block, and `marked.parse()` turns the text block's
+markdown link into a normal `<a href>` that pastes into Naver as clickable text — which is the
+only way an affiliate/CTA link survives the Naver publish, and also renders identically on the
+web app (`src/App.tsx`).
