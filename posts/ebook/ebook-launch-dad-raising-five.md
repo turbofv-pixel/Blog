@@ -86,7 +86,7 @@ naverCategory: "육아일기"
 
 전자책은 크몽에서 구매하실 수 있어요.
 
-👉 [다섯 살, 우리가 함께 만든 계절 - 크몽에서 보러 가기](https://kmong.com/gig/810522)
+👉 [다섯 살, 우리가 함께 만든 계절 - 크몽에서 보러 가기](https://blog-eta-blond-71.vercel.app/go/?to=https%3A%2F%2Fkmong.com%2Fself-marketing%2F810522%2FzN1eTTbHG7&label=ebook-launch_kmong)
 
 다섯 살 아이를 키우고 계신 부모님이라면 "우리 집만 그런 게 아니었구나" 하고 공감하며 읽으실 수 있을 거예요. 그리고 다른 시기를 지나고 계신 분들께도, 어느 아빠의 서툴고 사랑스러운 기록으로 재미있게 읽히면 좋겠습니다.
 
