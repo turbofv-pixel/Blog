@@ -39,7 +39,7 @@ const samplePosts: Post[] = [
 
 ![레고랜드 코리아 리조트 입장권 예매 - 쿠팡에서 예매하기](/images/legoland/legoland-ticket-banner.png)
 
-👉 [레고랜드 코리아 리조트 입장권 예매하기](https://link.coupang.com/a/gLljwSv3PE)
+👉 [레고랜드 코리아 리조트 입장권 예매하기](https://link.coupang.com/a/gLoq8ETVIq)
 
 > 이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.
 
