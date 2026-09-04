@@ -55,7 +55,9 @@ directly with no extra masking layer — **and** the blog's own e-book launch/pr
 `src/App.tsx`, published on Naver at `https://blog.naver.com/bigbigrabbit/224399842800`). If
 a new e-book's launch post hasn't been published to Naver yet (no real URL), ask the user for
 it rather than guessing or leaving a placeholder/dead link — until then, link only the 크몽
-gig page. If a new e-book's 크몽 gig link isn't already known, ask the user for
+gig page. **The launch/promo post's own Kmong CTA link needs the same `/go/` treatment too**
+(it's easy to forget since it's the source of the "and" link above, not a consumer of it) —
+currently `label=ebook-launch_kmong` for post-53. If a new e-book's 크몽 gig link isn't already known, ask the user for
 it rather than guessing or reusing a different book's link. Frame the CTA as an invitation to
 buy — never "무료로 읽어보세요" or anything implying free access. Keep the tone as a gentle
 mention, not a hard sell — a plain `---` divider above it, the small promo card image
