@@ -93,6 +93,34 @@ If a different e-book is being promoted, make (or ask the user for) a matching s
 image for that book rather than reusing this one. Applies to new posts going forward;
 existing 육아 posts don't need to be retrofitted unless asked.
 
+## Naver Blog sidebar widget: persistent e-book promo outside individual posts
+
+Beyond per-post CTAs, the blog also carries a small e-book promo in a Naver Blog **사이드바
+위젯** ("위젯 직접등록" — a custom-HTML widget slot in 네이버 블로그 관리 → 꾸미기 설정 →
+레이아웃·위젯 설정) so every visitor sees it regardless of which post they land on. Naver's
+title/cover image at the top of the blog is decorative only and can't carry a link, so the
+widget is the only place a persistent, clickable promo is possible — this repo's `automation/
+publish-to-naver.mjs` only drives posting a single article, not blog-wide admin settings like
+widgets, so pasting the widget HTML into that settings screen is a manual step for the user.
+
+The widget image is `public/images/ebook-promo/widget-banner.png` (a taller, portrait cutdown
+of the CTA card — same book cover + title + "크몽에서 만나보기" pill styling — sized for a
+narrow sidebar column rather than an inline post image) and is referenced by its Vercel URL
+(`https://blog-eta-blond-71.vercel.app/images/ebook-promo/widget-banner.png`) for the same
+identity-hiding reason as the `/go/` link. The widget's embed HTML wraps that image in an
+`<a>` pointing at the `/go/` redirector with its own distinct label (`widget_kmong`), so its
+clicks are separable in GA4 from any single post's CTA:
+
+```html
+<a href="https://blog-eta-blond-71.vercel.app/go/?to=<url-encoded destination>&label=widget_kmong" target="_blank" rel="noopener">
+  <img src="https://blog-eta-blond-71.vercel.app/images/ebook-promo/widget-banner.png" alt="<book title> - 대왕토끼의 전자책" style="width:100%;max-width:300px;border-radius:12px;">
+</a>
+```
+
+If a different e-book becomes the one being promoted, make (or ask the user for) a new
+`widget-banner.png` for that book and give the user updated embed HTML to paste over the old
+one — same as the per-post CTA card.
+
 ## Parenting post media: the user processes it themselves now, via MosaicStudio
 
 Earlier posts had Claude do face-detection + bunny-sticker processing directly (Python
