@@ -28,7 +28,9 @@ naverCategory: "육아일기"
 
 레고랜드는 현장 구매보다 사전 예매가 훨씬 저렴하고, 줄을 서지 않아도 돼서 시간도 절약돼요. 저희도 미리 예매해서 편하게 입장했어요.
 
-[![레고랜드 코리아 리조트 입장권 예매 - 쿠팡에서 예매하기](/images/legoland/legoland-ticket-banner.png)](https://link.coupang.com/a/gLljwSv3PE)
+![레고랜드 코리아 리조트 입장권 예매 - 쿠팡에서 예매하기](/images/legoland/legoland-ticket-banner.png)
+
+👉 [레고랜드 코리아 리조트 입장권 예매하기](https://link.coupang.com/a/gLljwSv3PE)
 
 > 이 포스팅은 쿠팡 파트너스 활동의 일환으로, 이에 따른 일정액의 수수료를 제공받습니다.
 
