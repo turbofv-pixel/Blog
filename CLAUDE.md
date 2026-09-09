@@ -235,13 +235,15 @@ it's ever reverted.
 ## Markdown gotcha: `**bold**` right before a Korean particle with no space silently fails
 
 `marked`'s emphasis parser can fail to close `**bold**` when the closing `**` is immediately
-preceded by `)` and immediately followed by a Korean character with no space, e.g.
-`**메타포레스트(메타버스 체험관)**에` renders as literal asterisks instead of `<strong>`.
-`**메타포레스트**(메타버스 체험관)에` (move the parenthetical outside the bold) or adding a
-space before the particle both render fine. The stray-`**`-in-rendered-HTML regression check
-already run before every post commit (render through `marked.parse()`, grep for leftover
-`**`) catches this — if it fires, reword the sentence rather than assuming the check is
-wrong.
+preceded by a closing punctuation character — `)` or `'` confirmed so far — and immediately
+followed by a Korean character with no space, e.g. `**메타포레스트(메타버스 체험관)**에` and
+`**'CUJU 보물섬'**에` both render as literal asterisks instead of `<strong>`.
+`**메타포레스트**(메타버스 체험관)에` (move the punctuation outside the bold) or adding a
+space before the particle (`**'CUJU 보물섬'** 축제에`) both render fine. The
+stray-`**`-in-rendered-HTML regression check already run before every post commit (render
+through `marked.parse()`, grep for leftover `**`) catches this — if it fires, reword the
+sentence rather than assuming the check is wrong. Treat any closing punctuation mark right
+before a closing `**` as suspect, not just `)`.
 
 ## Affiliate/CTA banner images: never wrap the image itself in a link
 
