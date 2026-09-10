@@ -1,0 +1,309 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<meta name="description" content="대왕토끼가 아이와 직접 다녀온 곳만 모은 가볼만한곳 가이드. 지역·실내외·무료여부로 찾아보세요." />
+<title>아이와 가볼만한곳 가이드 | 대왕토끼</title>
+<style>
+  :root {
+    color-scheme: light;
+    --bg: #fffaf7;
+    --card-bg: #ffffff;
+    --text: #2b2622;
+    --text-muted: #86766e;
+    --accent: #e0507a;
+    --accent-soft: #fbe4ea;
+    --naver: #03c75a;
+    --border: #f0e4dd;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, 'Malgun Gothic', sans-serif;
+    line-height: 1.5;
+  }
+  header.hero {
+    padding: 36px 20px 24px;
+    text-align: center;
+    max-width: 720px;
+    margin: 0 auto;
+  }
+  header.hero .badge {
+    display: inline-block;
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 0.78rem;
+    font-weight: 700;
+    padding: 5px 12px;
+    border-radius: 999px;
+    margin-bottom: 12px;
+  }
+  header.hero h1 {
+    font-size: 1.6rem;
+    margin: 0 0 8px;
+    letter-spacing: -0.02em;
+  }
+  header.hero p {
+    color: var(--text-muted);
+    font-size: 0.94rem;
+    margin: 0;
+  }
+  .controls {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 0 16px 8px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    justify-content: center;
+  }
+  .controls select,
+  .controls input[type="search"] {
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    border-radius: 10px;
+    padding: 9px 12px;
+    font-size: 0.88rem;
+    color: var(--text);
+  }
+  .controls input[type="search"] { min-width: 200px; flex: 1 1 200px; }
+  .chip-row {
+    max-width: 960px;
+    margin: 4px auto 0;
+    padding: 0 16px;
+    display: flex;
+    gap: 6px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .chip {
+    border: 1px solid var(--border);
+    background: var(--card-bg);
+    border-radius: 999px;
+    padding: 6px 13px;
+    font-size: 0.82rem;
+    cursor: pointer;
+    color: var(--text-muted);
+    user-select: none;
+  }
+  .chip.active {
+    background: var(--accent);
+    border-color: var(--accent);
+    color: #fff;
+  }
+  #count {
+    text-align: center;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+    margin: 14px 0 4px;
+  }
+  .grid {
+    max-width: 960px;
+    margin: 0 auto;
+    padding: 8px 16px 48px;
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+  }
+  .card {
+    background: var(--card-bg);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .card img {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    object-fit: cover;
+    background: var(--accent-soft);
+    display: block;
+  }
+  .card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .badges { display: flex; gap: 6px; flex-wrap: wrap; }
+  .badge-sm {
+    font-size: 0.72rem;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 999px;
+  }
+  .badge-region { background: #eef2ff; color: #4338ca; }
+  .badge-free { background: #ecfdf5; color: #047857; }
+  .badge-paid { background: #fff7ed; color: #c2410c; }
+  .card h3 { margin: 0; font-size: 1.02rem; letter-spacing: -0.01em; }
+  .card p.blurb { margin: 0; font-size: 0.86rem; color: var(--text-muted); flex: 1; }
+  .tags { display: flex; gap: 5px; flex-wrap: wrap; }
+  .tags span {
+    font-size: 0.72rem;
+    color: var(--text-muted);
+    background: #f7f2ee;
+    padding: 2px 8px;
+    border-radius: 999px;
+  }
+  .ticket-btn {
+    display: inline-block;
+    margin-top: 4px;
+    background: var(--naver);
+    color: #fff;
+    text-decoration: none;
+    font-size: 0.84rem;
+    font-weight: 700;
+    padding: 9px 12px;
+    border-radius: 10px;
+    text-align: center;
+  }
+  .empty {
+    text-align: center;
+    color: var(--text-muted);
+    padding: 40px 16px;
+    font-size: 0.9rem;
+  }
+  footer {
+    text-align: center;
+    padding: 28px 16px 40px;
+    color: var(--text-muted);
+    font-size: 0.82rem;
+  }
+  footer a { color: var(--accent); }
+</style>
+<!-- Google tag (gtag.js) -->
+<script async src="https://www.googletagmanager.com/gtag/js?id=G-FKW051Z13L"></script>
+<script>
+  window.dataLayer = window.dataLayer || [];
+  function gtag(){ dataLayer.push(arguments); }
+  gtag('js', new Date());
+  gtag('config', 'G-FKW051Z13L');
+</script>
+</head>
+<body>
+
+<header class="hero">
+  <span class="badge">🐰 대왕토끼가 직접 다녀온 곳만</span>
+  <h1>아이와 가볼만한곳 가이드</h1>
+  <p>블로그에 올린 후기 중, 실제로 다녀온 곳만 지역·실내외·무료여부로 모아봤어요.</p>
+</header>
+
+<div class="controls">
+  <input type="search" id="search" placeholder="장소 이름으로 검색" />
+  <select id="province-filter"></select>
+</div>
+<div class="chip-row" id="fee-chips"></div>
+<div class="chip-row" id="indoor-chips"></div>
+
+<p id="count"></p>
+<div class="grid" id="grid"></div>
+<div class="empty" id="empty" hidden>조건에 맞는 장소가 없어요. 필터를 조금 풀어보세요.</div>
+
+<footer>
+  더 많은 방문 후기는 <a href="https://blog.naver.com/bigbigrabbit" target="_blank" rel="noopener">대왕토끼 네이버 블로그</a>에서 볼 수 있어요.
+</footer>
+
+<script>
+  var PLACES = [
+    { title: "안양 CUJU 보물섬 축제", city: "안양", province: "경기", fee: "무료", indoor: ["실외"], image: "/images/cuju-festival/rabbit_1000028209.jpg", blurb: "청소년 동아리들이 직접 여는 축제 — 빵 해적선 만들기, 조에트로프, 스탬프 투어까지 하루 종일 체험 가득해요.", tags: ["축제", "만들기체험"] },
+    { title: "반포역 시민안전체험관", city: "서초", province: "서울", fee: "무료", indoor: ["실내"], image: "/images/banpo-safety-experience-center/rabbit_20260509_141805.jpg", blurb: "지하철역 안에서 지하철 운전 체험과 심폐소생술까지 배울 수 있는 무료 체험관이에요.", tags: ["안전교육", "지하철체험"] },
+    { title: "금천 순이의 집 & 넷마블 게임박물관", city: "금천", province: "서울", fee: "무료", indoor: ["실내"], image: "/images/geumcheon-suni-netmarble/rabbit_1000024540.jpg", blurb: "구로공단 여공들의 삶을 담은 전시부터 넷마블 게임 체험까지 무료로 즐기는 곳이에요.", tags: ["박물관", "게임체험"] },
+    { title: "군포 포포누리 클라이밍존", city: "군포", province: "경기", fee: "유료", feeDetail: "체험 1,500원 / 강습 20,000원 (다자녀 50% 할인)", indoor: ["실내"], image: "/images/gunpo-poponuri-climbing/rabbit_20260717_160806.jpg", blurb: "실내 암벽등반을 체험 1,500원부터 가볍게 즐길 수 있는 클라이밍 전용 공간이에요.", tags: ["클라이밍", "다자녀할인"] },
+    { title: "과천시 정보과학도서관 메타포레스트", city: "과천", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/gwacheon-metaforest/rabbit_20260221_174327.jpg", blurb: "도서관 안 메타버스 체험관 — 그림 그리기부터 가상현실 놀이까지 무료로 체험해요.", tags: ["메타버스", "도서관"] },
+    { title: "광명시 게임창작소", city: "광명", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/gwangmyeong-game-center/rabbit_1000028117.jpg", blurb: "VR 게임 체험과 콜라주 만들기까지 즐기는 무료 게임 체험관이에요.", tags: ["VR체험", "게임"] },
+    { title: "현대모터스튜디오 고양", city: "고양", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/motorstudio-goyang-hachuping/rabbit_20260711_105326.jpg", blurb: "하츄핑 수소자동차 상영관과 클래식카 전시까지, 온 가족이 무료로 즐기는 곳이에요.", tags: ["자동차전시", "상영관"] },
+    { title: "고양 장항 람사르습지생태관", city: "고양", province: "경기", fee: "무료", feeDetail: "무료 (시범운영 기간)", indoor: ["실내", "실외"], image: "/images/janghang-ramsar-wetland/rabbit_20260808_144849.jpg", blurb: "람사르 습지를 주제로 한 교육·체험 프로그램을 무료로 운영하고 있어요.", tags: ["생태체험", "습지"] },
+    { title: "레고랜드 코리아 리조트", city: "춘천", province: "강원", fee: "유료", indoor: ["실내", "실외"], image: "/images/legoland/legoland-ticket-banner.png", blurb: "닌자고 더 라이드부터 듀플로 기차까지 — 사전 예매하면 더 저렴하고 줄도 안 서요.", tags: ["테마파크", "사전예매"], ticketLabel: "입장권 예매하기", ticketUrl: "https://blog-eta-blond-71.vercel.app/go/?to=https%3A%2F%2Flink.coupang.com%2Fa%2FgLoq8ETVIq&label=guide-legoland_coupang" },
+    { title: "맹산환경생태학습원", city: "안양", province: "경기", fee: "무료", indoor: ["실외"], image: "/images/maengsan/rabbit_20260627_103437.jpg", blurb: "목공체험부터 편백나무존, 야외 놀이터까지 자연 속에서 즐기는 무료 학습원이에요.", tags: ["목공체험", "자연놀이"] },
+    { title: "국립국악원", city: "서초", province: "서울", fee: "무료", indoor: ["실내"], image: "/images/gukakwon/rabbit_20260328_124907.jpg", blurb: "가야금 연주 체험부터 AR 춤 체험까지, 국악을 몸으로 배우는 무료 박물관이에요.", tags: ["국악체험", "박물관"] },
+    { title: "녹청자박물관", city: "인천 서구", province: "인천", fee: "유료", feeDetail: "물레성형 9,000원 / 흙가래성형 8,000원 / 도자기페인팅 5,000원", indoor: ["실내"], image: "/images/nokcheongja-museum-pottery/rabbit_20260222_095516.jpg", blurb: "물레성형, 흙가래성형, 도자기페인팅까지 직접 만들어보는 도자기 체험관이에요.", tags: ["도자기체험", "만들기"] },
+    { title: "오산 유엔군초전기념관", city: "오산", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/osan-un-forces-memorial/rabbit_1000027987.jpg", blurb: "VR로 해적선에 포탄을 쏘는 체험까지, 역사와 재미를 함께 배우는 무료 기념관이에요.", tags: ["역사체험", "VR체험"] },
+    { title: "국립민속박물관 파주 어린이박물관", city: "파주", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/paju-museum-children/rabbit_20260530_124416.jpg", blurb: "반짝반짝 폴짝콩짝 상설전시를 즐기는 무료 어린이박물관, 넓은 무료 주차장까지 갖췄어요.", tags: ["박물관", "상설전시"] },
+    { title: "국립생태원 에코플랫폼 서울", city: "광진", province: "서울", fee: "무료", indoor: ["실내"], image: "/images/seoul-childrens-grandpark-eco-platform/rabbit_1000022668.jpg", blurb: "서울어린이대공원 안 국립생태원 분관 — 생태교육 프로그램을 무료로 즐길 수 있어요.", tags: ["생태교육"] },
+    { title: "SERI PAK with 용인", city: "용인", province: "경기", fee: "무료", feeDetail: "무료 (주차는 평일 유료, 주말·공휴일 무료)", indoor: ["실내"], image: "/images/seri-pak-with-yongin/rabbit_20260705_135427.jpg", blurb: "가상 스포츠 체험부터 계단형 북카페, 모래놀이터까지 갖춘 복합 체험 공간이에요.", tags: ["스포츠체험", "북카페"] },
+    { title: "시흥 숨쉬는놀이터", city: "시흥", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/siheung-breathing-playground/ar-sports-photo.jpg", blurb: "시흥국민체육센터 안 무료 실내 놀이터 — AR 스포츠 게임까지 즐길 수 있어요.", tags: ["실내놀이터", "AR체험"] },
+    { title: "맑은물 상상누리", city: "시흥", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/siheung-clean-water-imaginarium/water-purification-process.jpg", blurb: "정수 과정을 직접 체험해보는 무료 물 테마 체험관이에요.", tags: ["물체험"] },
+    { title: "용인시기후변화체험교육센터", city: "용인", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/yongin-climate-change-center/rabbit_20260523_135614.jpg", blurb: "풍력·태양광 에너지를 직접 체험하는 기후탐험대 프로그램을 무료로 운영해요.", tags: ["기후체험"] },
+    { title: "용인특례시미디어센터", city: "용인", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/yongin-media-center-movie/rabbit_20260829_144110.jpg", blurb: "돗자리 깔고 보는 가족영화 상영회 등 무료 프로그램을 운영하는 미디어센터예요.", tags: ["영화상영"] }
+  ];
+
+  var state = { q: "", province: "전체", fee: "전체", indoor: "전체" };
+
+  function uniqueSorted(arr) {
+    return Array.from(new Set(arr)).sort();
+  }
+
+  function buildProvinceFilter() {
+    var sel = document.getElementById("province-filter");
+    var provinces = ["전체"].concat(uniqueSorted(PLACES.map(function (p) { return p.province; })));
+    sel.innerHTML = provinces.map(function (p) { return '<option value="' + p + '">' + (p === "전체" ? "지역 전체" : p) + "</option>"; }).join("");
+    sel.addEventListener("change", function () { state.province = sel.value; render(); });
+  }
+
+  function buildChips(containerId, values, stateKey, allLabel) {
+    var container = document.getElementById(containerId);
+    var all = ["전체"].concat(values);
+    container.innerHTML = all.map(function (v) {
+      var label = v === "전체" ? allLabel : v;
+      return '<span class="chip' + (v === "전체" ? " active" : "") + '" data-value="' + v + '">' + label + "</span>";
+    }).join("");
+    Array.prototype.forEach.call(container.querySelectorAll(".chip"), function (chip) {
+      chip.addEventListener("click", function () {
+        Array.prototype.forEach.call(container.querySelectorAll(".chip"), function (c) { c.classList.remove("active"); });
+        chip.classList.add("active");
+        state[stateKey] = chip.getAttribute("data-value");
+        render();
+      });
+    });
+  }
+
+  function matches(place) {
+    if (state.province !== "전체" && place.province !== state.province) return false;
+    if (state.fee !== "전체" && place.fee !== state.fee) return false;
+    if (state.indoor !== "전체" && place.indoor.indexOf(state.indoor) === -1) return false;
+    if (state.q) {
+      var haystack = (place.title + " " + place.city + " " + place.tags.join(" ")).toLowerCase();
+      if (haystack.indexOf(state.q.toLowerCase()) === -1) return false;
+    }
+    return true;
+  }
+
+  function cardHtml(place) {
+    var feeBadge = place.fee === "무료"
+      ? '<span class="badge-sm badge-free">무료</span>'
+      : '<span class="badge-sm badge-paid">유료</span>';
+    var ticket = place.ticketUrl
+      ? '<a class="ticket-btn" href="' + place.ticketUrl + '" target="_blank" rel="noopener">' + place.ticketLabel + "</a>"
+      : "";
+    return (
+      '<div class="card">' +
+        '<img src="' + place.image + '" alt="' + place.title + '" loading="lazy" />' +
+        '<div class="card-body">' +
+          '<div class="badges"><span class="badge-sm badge-region">' + place.province + " · " + place.city + "</span>" + feeBadge + "</div>" +
+          "<h3>" + place.title + "</h3>" +
+          '<p class="blurb">' + place.blurb + (place.feeDetail ? " (" + place.feeDetail + ")" : "") + "</p>" +
+          '<div class="tags">' + place.tags.map(function (t) { return "<span>#" + t + "</span>"; }).join("") + "</div>" +
+          ticket +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function render() {
+    var filtered = PLACES.filter(matches);
+    document.getElementById("grid").innerHTML = filtered.map(cardHtml).join("");
+    document.getElementById("count").textContent = filtered.length + "곳";
+    document.getElementById("empty").hidden = filtered.length > 0;
+  }
+
+  document.getElementById("search").addEventListener("input", function (e) {
+    state.q = e.target.value;
+    render();
+  });
+
+  buildProvinceFilter();
+  buildChips("fee-chips", uniqueSorted(PLACES.map(function (p) { return p.fee; })), "fee", "무료/유료 전체");
+  buildChips("indoor-chips", ["실내", "실외"], "indoor", "실내외 전체");
+  render();
+</script>
+</body>
+</html>
