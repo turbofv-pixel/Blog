@@ -123,6 +123,19 @@
     background: var(--accent-soft);
     display: block;
   }
+  .card .no-photo {
+    width: 100%;
+    aspect-ratio: 4 / 3;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 4px;
+    background: linear-gradient(135deg, var(--accent-soft), #fdf3e7);
+    color: var(--text-muted);
+    font-size: 0.78rem;
+  }
+  .card .no-photo span.emoji { font-size: 1.6rem; }
   .card-body { padding: 14px 16px 16px; display: flex; flex-direction: column; gap: 8px; flex: 1; }
   .badges { display: flex; gap: 6px; flex-wrap: wrap; }
   .badge-sm {
@@ -204,26 +217,26 @@
 
 <script>
   var PLACES = [
-    { title: "안양 CUJU 보물섬 축제", city: "안양", province: "경기", fee: "무료", indoor: ["실외"], image: "/images/cuju-festival/rabbit_1000028209.jpg", blurb: "청소년 동아리들이 직접 여는 축제 — 빵 해적선 만들기, 조에트로프, 스탬프 투어까지 하루 종일 체험 가득해요.", tags: ["축제", "만들기체험"] },
-    { title: "반포역 시민안전체험관", city: "서초", province: "서울", fee: "무료", indoor: ["실내"], image: "/images/banpo-safety-experience-center/rabbit_20260509_141805.jpg", blurb: "지하철역 안에서 지하철 운전 체험과 심폐소생술까지 배울 수 있는 무료 체험관이에요.", tags: ["안전교육", "지하철체험"] },
-    { title: "금천 순이의 집 & 넷마블 게임박물관", city: "금천", province: "서울", fee: "무료", indoor: ["실내"], image: "/images/geumcheon-suni-netmarble/rabbit_1000024540.jpg", blurb: "구로공단 여공들의 삶을 담은 전시부터 넷마블 게임 체험까지 무료로 즐기는 곳이에요.", tags: ["박물관", "게임체험"] },
-    { title: "군포 포포누리 클라이밍존", city: "군포", province: "경기", fee: "유료", feeDetail: "체험 1,500원 / 강습 20,000원 (다자녀 50% 할인)", indoor: ["실내"], image: "/images/gunpo-poponuri-climbing/rabbit_20260717_160806.jpg", blurb: "실내 암벽등반을 체험 1,500원부터 가볍게 즐길 수 있는 클라이밍 전용 공간이에요.", tags: ["클라이밍", "다자녀할인"] },
-    { title: "과천시 정보과학도서관 메타포레스트", city: "과천", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/gwacheon-metaforest/rabbit_20260221_174327.jpg", blurb: "도서관 안 메타버스 체험관 — 그림 그리기부터 가상현실 놀이까지 무료로 체험해요.", tags: ["메타버스", "도서관"] },
-    { title: "광명시 게임창작소", city: "광명", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/gwangmyeong-game-center/rabbit_1000028117.jpg", blurb: "VR 게임 체험과 콜라주 만들기까지 즐기는 무료 게임 체험관이에요.", tags: ["VR체험", "게임"] },
-    { title: "현대모터스튜디오 고양", city: "고양", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/motorstudio-goyang-hachuping/rabbit_20260711_105326.jpg", blurb: "하츄핑 수소자동차 상영관과 클래식카 전시까지, 온 가족이 무료로 즐기는 곳이에요.", tags: ["자동차전시", "상영관"] },
-    { title: "고양 장항 람사르습지생태관", city: "고양", province: "경기", fee: "무료", feeDetail: "무료 (시범운영 기간)", indoor: ["실내", "실외"], image: "/images/janghang-ramsar-wetland/rabbit_20260808_144849.jpg", blurb: "람사르 습지를 주제로 한 교육·체험 프로그램을 무료로 운영하고 있어요.", tags: ["생태체험", "습지"] },
+    { title: "안양 CUJU 보물섬 축제", city: "안양", province: "경기", fee: "무료", indoor: ["실외"], blurb: "청소년 동아리들이 직접 여는 축제 — 빵 해적선 만들기, 조에트로프, 스탬프 투어까지 하루 종일 체험 가득해요.", tags: ["축제", "만들기체험"] },
+    { title: "반포역 시민안전체험관", city: "서초", province: "서울", fee: "무료", indoor: ["실내"], blurb: "지하철역 안에서 지하철 운전 체험과 심폐소생술까지 배울 수 있는 무료 체험관이에요.", tags: ["안전교육", "지하철체험"] },
+    { title: "금천 순이의 집 & 넷마블 게임박물관", city: "금천", province: "서울", fee: "무료", indoor: ["실내"], blurb: "구로공단 여공들의 삶을 담은 전시부터 넷마블 게임 체험까지 무료로 즐기는 곳이에요.", tags: ["박물관", "게임체험"] },
+    { title: "군포 포포누리 클라이밍존", city: "군포", province: "경기", fee: "유료", feeDetail: "체험 1,500원 / 강습 20,000원 (다자녀 50% 할인)", indoor: ["실내"], blurb: "실내 암벽등반을 체험 1,500원부터 가볍게 즐길 수 있는 클라이밍 전용 공간이에요.", tags: ["클라이밍", "다자녀할인"] },
+    { title: "과천시 정보과학도서관 메타포레스트", city: "과천", province: "경기", fee: "무료", indoor: ["실내"], blurb: "도서관 안 메타버스 체험관 — 그림 그리기부터 가상현실 놀이까지 무료로 체험해요.", tags: ["메타버스", "도서관"] },
+    { title: "광명시 게임창작소", city: "광명", province: "경기", fee: "무료", indoor: ["실내"], blurb: "VR 게임 체험과 콜라주 만들기까지 즐기는 무료 게임 체험관이에요.", tags: ["VR체험", "게임"] },
+    { title: "현대모터스튜디오 고양", city: "고양", province: "경기", fee: "무료", indoor: ["실내"], blurb: "하츄핑 수소자동차 상영관과 클래식카 전시까지, 온 가족이 무료로 즐기는 곳이에요.", tags: ["자동차전시", "상영관"] },
+    { title: "고양 장항 람사르습지생태관", city: "고양", province: "경기", fee: "무료", feeDetail: "무료 (시범운영 기간)", indoor: ["실내", "실외"], blurb: "람사르 습지를 주제로 한 교육·체험 프로그램을 무료로 운영하고 있어요.", tags: ["생태체험", "습지"] },
     { title: "레고랜드 코리아 리조트", city: "춘천", province: "강원", fee: "유료", indoor: ["실내", "실외"], image: "/images/legoland/legoland-ticket-banner.png", blurb: "닌자고 더 라이드부터 듀플로 기차까지 — 사전 예매하면 더 저렴하고 줄도 안 서요.", tags: ["테마파크", "사전예매"], ticketLabel: "입장권 예매하기", ticketUrl: "https://blog-eta-blond-71.vercel.app/go/?to=https%3A%2F%2Flink.coupang.com%2Fa%2FgLoq8ETVIq&label=guide-legoland_coupang" },
-    { title: "맹산환경생태학습원", city: "안양", province: "경기", fee: "무료", indoor: ["실외"], image: "/images/maengsan/rabbit_20260627_103437.jpg", blurb: "목공체험부터 편백나무존, 야외 놀이터까지 자연 속에서 즐기는 무료 학습원이에요.", tags: ["목공체험", "자연놀이"] },
-    { title: "국립국악원", city: "서초", province: "서울", fee: "무료", indoor: ["실내"], image: "/images/gukakwon/rabbit_20260328_124907.jpg", blurb: "가야금 연주 체험부터 AR 춤 체험까지, 국악을 몸으로 배우는 무료 박물관이에요.", tags: ["국악체험", "박물관"] },
-    { title: "녹청자박물관", city: "인천 서구", province: "인천", fee: "유료", feeDetail: "물레성형 9,000원 / 흙가래성형 8,000원 / 도자기페인팅 5,000원", indoor: ["실내"], image: "/images/nokcheongja-museum-pottery/rabbit_20260222_095516.jpg", blurb: "물레성형, 흙가래성형, 도자기페인팅까지 직접 만들어보는 도자기 체험관이에요.", tags: ["도자기체험", "만들기"] },
-    { title: "오산 유엔군초전기념관", city: "오산", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/osan-un-forces-memorial/rabbit_1000027987.jpg", blurb: "VR로 해적선에 포탄을 쏘는 체험까지, 역사와 재미를 함께 배우는 무료 기념관이에요.", tags: ["역사체험", "VR체험"] },
-    { title: "국립민속박물관 파주 어린이박물관", city: "파주", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/paju-museum-children/rabbit_20260530_124416.jpg", blurb: "반짝반짝 폴짝콩짝 상설전시를 즐기는 무료 어린이박물관, 넓은 무료 주차장까지 갖췄어요.", tags: ["박물관", "상설전시"] },
-    { title: "국립생태원 에코플랫폼 서울", city: "광진", province: "서울", fee: "무료", indoor: ["실내"], image: "/images/seoul-childrens-grandpark-eco-platform/rabbit_1000022668.jpg", blurb: "서울어린이대공원 안 국립생태원 분관 — 생태교육 프로그램을 무료로 즐길 수 있어요.", tags: ["생태교육"] },
-    { title: "SERI PAK with 용인", city: "용인", province: "경기", fee: "무료", feeDetail: "무료 (주차는 평일 유료, 주말·공휴일 무료)", indoor: ["실내"], image: "/images/seri-pak-with-yongin/rabbit_20260705_135427.jpg", blurb: "가상 스포츠 체험부터 계단형 북카페, 모래놀이터까지 갖춘 복합 체험 공간이에요.", tags: ["스포츠체험", "북카페"] },
+    { title: "맹산환경생태학습원", city: "안양", province: "경기", fee: "무료", indoor: ["실외"], blurb: "목공체험부터 편백나무존, 야외 놀이터까지 자연 속에서 즐기는 무료 학습원이에요.", tags: ["목공체험", "자연놀이"] },
+    { title: "국립국악원", city: "서초", province: "서울", fee: "무료", indoor: ["실내"], blurb: "가야금 연주 체험부터 AR 춤 체험까지, 국악을 몸으로 배우는 무료 박물관이에요.", tags: ["국악체험", "박물관"] },
+    { title: "녹청자박물관", city: "인천 서구", province: "인천", fee: "유료", feeDetail: "물레성형 9,000원 / 흙가래성형 8,000원 / 도자기페인팅 5,000원", indoor: ["실내"], blurb: "물레성형, 흙가래성형, 도자기페인팅까지 직접 만들어보는 도자기 체험관이에요.", tags: ["도자기체험", "만들기"] },
+    { title: "오산 유엔군초전기념관", city: "오산", province: "경기", fee: "무료", indoor: ["실내"], blurb: "VR로 해적선에 포탄을 쏘는 체험까지, 역사와 재미를 함께 배우는 무료 기념관이에요.", tags: ["역사체험", "VR체험"] },
+    { title: "국립민속박물관 파주 어린이박물관", city: "파주", province: "경기", fee: "무료", indoor: ["실내"], blurb: "반짝반짝 폴짝콩짝 상설전시를 즐기는 무료 어린이박물관, 넓은 무료 주차장까지 갖췄어요.", tags: ["박물관", "상설전시"] },
+    { title: "국립생태원 에코플랫폼 서울", city: "광진", province: "서울", fee: "무료", indoor: ["실내"], blurb: "서울어린이대공원 안 국립생태원 분관 — 생태교육 프로그램을 무료로 즐길 수 있어요.", tags: ["생태교육"] },
+    { title: "SERI PAK with 용인", city: "용인", province: "경기", fee: "무료", feeDetail: "무료 (주차는 평일 유료, 주말·공휴일 무료)", indoor: ["실내"], blurb: "가상 스포츠 체험부터 계단형 북카페, 모래놀이터까지 갖춘 복합 체험 공간이에요.", tags: ["스포츠체험", "북카페"] },
     { title: "시흥 숨쉬는놀이터", city: "시흥", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/siheung-breathing-playground/ar-sports-photo.jpg", blurb: "시흥국민체육센터 안 무료 실내 놀이터 — AR 스포츠 게임까지 즐길 수 있어요.", tags: ["실내놀이터", "AR체험"] },
     { title: "맑은물 상상누리", city: "시흥", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/siheung-clean-water-imaginarium/water-purification-process.jpg", blurb: "정수 과정을 직접 체험해보는 무료 물 테마 체험관이에요.", tags: ["물체험"] },
-    { title: "용인시기후변화체험교육센터", city: "용인", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/yongin-climate-change-center/rabbit_20260523_135614.jpg", blurb: "풍력·태양광 에너지를 직접 체험하는 기후탐험대 프로그램을 무료로 운영해요.", tags: ["기후체험"] },
-    { title: "용인특례시미디어센터", city: "용인", province: "경기", fee: "무료", indoor: ["실내"], image: "/images/yongin-media-center-movie/rabbit_20260829_144110.jpg", blurb: "돗자리 깔고 보는 가족영화 상영회 등 무료 프로그램을 운영하는 미디어센터예요.", tags: ["영화상영"] }
+    { title: "용인시기후변화체험교육센터", city: "용인", province: "경기", fee: "무료", indoor: ["실내"], blurb: "풍력·태양광 에너지를 직접 체험하는 기후탐험대 프로그램을 무료로 운영해요.", tags: ["기후체험"] },
+    { title: "용인특례시미디어센터", city: "용인", province: "경기", fee: "무료", indoor: ["실내"], blurb: "돗자리 깔고 보는 가족영화 상영회 등 무료 프로그램을 운영하는 미디어센터예요.", tags: ["영화상영"] }
   ];
 
   var state = { q: "", province: "전체", fee: "전체", indoor: "전체" };
@@ -274,9 +287,12 @@
     var ticket = place.ticketUrl
       ? '<a class="ticket-btn" href="' + place.ticketUrl + '" target="_blank" rel="noopener">' + place.ticketLabel + "</a>"
       : "";
+    var media = place.image
+      ? '<img src="' + place.image + '" alt="' + place.title + '" loading="lazy" />'
+      : '<div class="no-photo"><span class="emoji">🐰</span><span>사진 준비 중</span></div>';
     return (
       '<div class="card">' +
-        '<img src="' + place.image + '" alt="' + place.title + '" loading="lazy" />' +
+        media +
         '<div class="card-body">' +
           '<div class="badges"><span class="badge-sm badge-region">' + place.province + " · " + place.city + "</span>" + feeBadge + "</div>" +
           "<h3>" + place.title + "</h3>" +
