@@ -1,0 +1,3 @@
+{
+  "ignoreCommand": "git diff --quiet HEAD^ HEAD -- public/go public/images/ebook-promo vercel.json"
+}

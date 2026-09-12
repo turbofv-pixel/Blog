@@ -87,6 +87,19 @@ property (measurement ID `G-FKW051Z13L`) logs an `outbound_click` event (with `l
 extend the `ALLOWED_HOSTS` array in `public/go/index.html` if a CTA ever needs to point
 somewhere else) or the redirector shows an error instead of forwarding; give each post a
 distinct `label` (e.g. `<post-slug>_kmong`) so its clicks are distinguishable in GA4 reports.
+
+**Vercel only actually needs to redeploy when `public/go/` or `public/images/ebook-promo/`
+change** — everything else in this repo (new posts, post edits, MosaicStudio/PostManager
+changes, etc.) has no effect on what the Vercel deployment serves. Left unchecked, Vercel's
+Git integration builds the whole app on *every* push to `master` regardless of what changed,
+which is wasted build time/noise for routine blog-post commits. `vercel.json`'s
+`ignoreCommand` (`git diff --quiet HEAD^ HEAD -- public/go public/images/ebook-promo
+vercel.json`) gates this: it exits 0 (skip the Vercel build) when neither of those paths
+changed since the previous commit, and exits 1 (proceed) when they did — this is Vercel's
+documented Ignore Build Step convention, not a guess. Don't remove `vercel.json` to "fix" a
+push that unexpectedly didn't redeploy on Vercel; check first whether the push actually
+touched `public/go/` or `public/images/ebook-promo/` — if not, the skip is correct. Extend
+the path list here if a future CTA asset lives somewhere else under `public/`.
 This applies to the 크몽 gig link in every new 육아 post's e-book CTA going forward; existing
 posts don't need to be retrofitted unless asked.
 If a different e-book is being promoted, make (or ask the user for) a matching small card
