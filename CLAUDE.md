@@ -2,6 +2,29 @@
 
 Guidance for Claude Code (or any future session) working in this repo.
 
+## Starting a session (any machine, any Claude account)
+
+Sessions get deleted and work moves between machines (the user's PC, a cloud server, a
+Team-plan Claude workspace), so **nothing outside this repo can be assumed to persist** —
+no local Claude memory, no scratchpad, no earlier conversation. This repo is the handoff.
+
+1. **Read `docs/WORKLOG.md` first.** It holds current status, open branches, and the to-do
+   list. Then read the rest of this file for the writing rules.
+2. Sync before touching anything: `git fetch && git switch master && git pull`. Another
+   environment may have pushed since this checkout was made.
+3. First run on a new machine: Node.js 20+, then `npm install`; `npm run dev` for the app
+   (`npm run dev:lan` to open it from a phone on the same Wi-Fi). GitHub auth via
+   `gh auth login` (HTTPS) and `gh auth setup-git`.
+4. Work on a `claude/<topic>` branch and merge through a PR, as the existing history does.
+   **Push, open a PR, or merge only when the user explicitly says so** ("올려", "푸시해",
+   "머지해") — a vague "ok" is not approval.
+5. **Before ending a session, add an entry to the top of the 작업 기록 section of
+   `docs/WORKLOG.md`** (date, what changed, what's left) and update its 진행 중 / 다음 할 일
+   list. A future session will only know what is written there.
+
+This repo is **public**: never write server IPs, passwords, tokens, personal emails, or
+phone numbers into it — including WORKLOG entries and commit messages.
+
 ## What this repo is
 
 A personal tool for drafting Naver Blog posts as Markdown, then converting/publishing them
